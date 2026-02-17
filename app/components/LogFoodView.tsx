@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function LogFoodView({ userId }: { userId: string | null }) {
@@ -10,6 +10,32 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const [isSaving, setIsSaving] = useState(false);
   const [editingMeals, setEditingMeals] = useState<any[]>([]);
   const [expandedItems, setExpandedItems] = useState<Map<string, Set<number>>>(new Map());
+  
+  // NEW - Saved meals state
+  const [savedMeals, setSavedMeals] = useState<any[]>([]);
+  const [showSavedMeals, setShowSavedMeals] = useState(false);
+  const [showSaveMealModal, setShowSaveMealModal] = useState(false);
+  const [mealToSave, setMealToSave] = useState<any>(null);
+  const [saveMealName, setSaveMealName] = useState('');
+
+  // Load saved meals when component mounts
+  useEffect(() => {
+    loadSavedMeals();
+  }, [userId]);
+
+  const loadSavedMeals = async () => {
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from('saved_meals')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      setSavedMeals(data);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,6 +123,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
           sugar: parseFloat(item.sugar) || 0,
           sodium: parseInt(item.sodium) || 0,
           categories: item.categories || [],
+          whole_food_ingredients: item.whole_food_ingredients || [],
           meal_type: meal.meal_type,
           meal_group_id: mealGroupId,
         }));
@@ -134,6 +161,99 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setEditingMeals([]);
   };
 
+  // NEW - Save meal for reuse
+  const openSaveMealModal = (meal: any) => {
+    setMealToSave(meal);
+    setSaveMealName('');
+    setShowSaveMealModal(true);
+  };
+
+  const saveMealForLater = async () => {
+    if (!userId || !mealToSave || !saveMealName.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('saved_meals')
+        .insert({
+          user_id: userId,
+          meal_name: saveMealName,
+          meal_type: mealToSave.meal_type,
+          items: mealToSave.items,
+        });
+
+      if (error) throw error;
+
+      alert('✅ Meal saved! You can reuse it anytime.');
+      setShowSaveMealModal(false);
+      loadSavedMeals();
+    } catch (error) {
+      console.error('Error saving meal:', error);
+      alert('Failed to save meal');
+    }
+  };
+
+  // NEW - Add saved meal to today
+  const addSavedMeal = async (savedMeal: any) => {
+    if (!userId) return;
+
+    try {
+      const mealGroupId = crypto.randomUUID();
+      
+      const itemsToInsert = savedMeal.items.map((item: any) => ({
+        user_id: userId,
+        food_name: item.food_name,
+        quantity: item.quantity,
+        calories: parseInt(item.calories) || 0,
+        protein: parseFloat(item.protein) || 0,
+        fat: parseFloat(item.fat) || 0,
+        carbs: parseFloat(item.carbs) || 0,
+        fiber: parseFloat(item.fiber) || 0,
+        sugar: parseFloat(item.sugar) || 0,
+        sodium: parseInt(item.sodium) || 0,
+        categories: item.categories || [],
+        whole_food_ingredients: item.whole_food_ingredients || [],
+        meal_type: savedMeal.meal_type,
+        meal_group_id: mealGroupId,
+      }));
+
+      const { error } = await supabase
+        .from('food_items')
+        .insert(itemsToInsert);
+
+      if (error) throw error;
+
+      alert(`✅ Added "${savedMeal.meal_name}" to today!`);
+      setShowSavedMeals(false);
+      
+      setTimeout(() => {
+        window.dispatchEvent(new Event('foodLogged'));
+      }, 100);
+    } catch (error) {
+      console.error('Error adding saved meal:', error);
+      alert('Failed to add meal');
+    }
+  };
+
+  // NEW - Delete saved meal
+  const deleteSavedMeal = async (mealId: string) => {
+    if (!confirm('Delete this saved meal?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('saved_meals')
+        .delete()
+        .eq('id', mealId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      loadSavedMeals();
+    } catch (error) {
+      console.error('Error deleting meal:', error);
+      alert('Failed to delete meal');
+    }
+  };
+
   const formatMealType = (type: string) => {
     const emoji = {
       breakfast: '🌅',
@@ -146,6 +266,53 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {/* Saved Meals Button */}
+      {savedMeals.length > 0 && (
+        <div className="mb-4">
+          <button
+            onClick={() => setShowSavedMeals(!showSavedMeals)}
+            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+          >
+            📚 My Saved Meals ({savedMeals.length})
+          </button>
+        </div>
+      )}
+
+      {/* Saved Meals List */}
+      {showSavedMeals && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+          <h3 className="font-semibold text-blue-900 mb-3">Saved Meals</h3>
+          <div className="space-y-2">
+            {savedMeals.map((meal) => (
+              <div key={meal.id} className="bg-white p-3 rounded-lg border border-blue-200 flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{meal.meal_name}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {formatMealType(meal.meal_type)} · {meal.items.length} items
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => addSavedMeal(meal)}
+                    className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                  >
+                    Add to Today
+                  </button>
+                  <button
+                    onClick={() => deleteSavedMeal(meal.id)}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <form onSubmit={handleSubmit}>
           <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -209,15 +376,27 @@ Examples:
                         <div className="text-lg font-semibold text-gray-900">
                           Meal {mealIndex + 1}
                         </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-gray-900">
-                            {mealTotals.calories} cal
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-gray-900">
+                              {mealTotals.calories} cal
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              P: {mealTotals.protein.toFixed(0)}g · 
+                              F: {mealTotals.fat.toFixed(0)}g · 
+                              C: {mealTotals.carbs.toFixed(0)}g
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            P: {mealTotals.protein.toFixed(0)}g · 
-                            F: {mealTotals.fat.toFixed(0)}g · 
-                            C: {mealTotals.carbs.toFixed(0)}g
-                          </div>
+                          {/* NEW - Save this meal button */}
+                          <button
+                            onClick={() => openSaveMealModal(meal)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                            title="Save this meal for later"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                            </svg>
+                          </button>
                         </div>
                       </div>
 
@@ -414,6 +593,41 @@ Examples:
           </div>
         )}
       </div>
+
+      {/* Save Meal Modal */}
+      {showSaveMealModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Save This Meal</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Give this meal a name so you can quickly add it again in the future.
+            </p>
+            <input
+              type="text"
+              value={saveMealName}
+              onChange={(e) => setSaveMealName(e.target.value)}
+              placeholder="e.g., Chicken Katsu Plate, Morning Smoothie"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={saveMealForLater}
+                disabled={!saveMealName.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-medium py-2 rounded-lg"
+              >
+                Save Meal
+              </button>
+              <button
+                onClick={() => setShowSaveMealModal(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
