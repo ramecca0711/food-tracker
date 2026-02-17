@@ -185,9 +185,34 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     }
   };
 
+  // Delete a food item from database
+  const deleteItem = async (itemId: string) => {
+    if (!userId) return;
+    
+    // Confirm before deleting
+    if (!confirm('Delete this food item?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('food_items')
+        .delete()
+        .eq('id', itemId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      // Reload dashboard data after deletion
+      loadDashboardData();
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      alert('Failed to delete item');
+    }
+  };
+
   // ============================================================================
   // BIODIVERSITY CALCULATION
   // ============================================================================
+  
   // Calculate biodiversity score from food items
   // Counts unique whole foods across 5 categories
   const calculateBiodiversity = (items: any[]) => {
@@ -199,7 +224,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     
     items.forEach(item => {
       const categories = item.categories || [];
-      const ingredients = item.whole_food_ingredients || []; // NEW - use extracted ingredients
+      const ingredients = item.whole_food_ingredients || []; // Use extracted ingredients
       
       // Process each whole food ingredient
       ingredients.forEach((ingredient: string) => {
@@ -209,12 +234,13 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         categories.forEach((cat: string) => {
           if (cat === 'fruit') uniqueFruits.add(foodName);
           if (cat === 'vegetable') uniqueVegetables.add(foodName);
+          // Nuts are often categorized as "fat" by AI
           if (cat === 'fat' && (foodName.includes('nut') || foodName.includes('almond') || foodName.includes('walnut') || foodName.includes('cashew') || foodName.includes('peanut') || foodName === 'avocado')) {
             uniqueNuts.add(foodName);
           }
         });
         
-        // Check for legumes
+        // Check for legumes (beans, lentils, etc.)
         if (foodName.includes('bean') || foodName.includes('lentil') || foodName.includes('chickpea') || foodName.includes('pea')) {
           uniqueLegumes.add(foodName);
         }
@@ -242,7 +268,6 @@ export default function DashboardView({ userId }: { userId: string | null }) {
       }
     };
   };
-  
 
   // ============================================================================
   // PROGRESS COLOR FUNCTIONS
@@ -635,12 +660,14 @@ export default function DashboardView({ userId }: { userId: string | null }) {
 
   return (
     <div className="space-y-8">
+      
       {/* ========== SUMMARY CARDS ========== */}
-      {/* Today vs 7-Day vs 30-Day Average with Goal Progress */}
+      {/* Shows Today, 7-Day Average, and 30-Day Average side by side */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* ---------- TODAY CARD ---------- */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6">
+          {/* Card header */}
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-medium text-gray-500">Today</div>
             {goals && (
@@ -648,12 +675,12 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             )}
           </div>
           
-          {/* Calories - Big number display */}
+          {/* Big calorie number */}
           <div className="text-4xl sm:text-5xl font-bold text-gray-900 mb-1">
             {todayStats.calories.toLocaleString()}
           </div>
           
-          {/* Progress vs goal */}
+          {/* Progress vs goal (if goals are set) */}
           {goals && (
             <div className={`text-sm font-semibold mb-2 ${getProgressColor(todayStats.calories, goals.calories, 'calories')}`}>
               {formatProgress(todayStats.calories, goals.calories)} of {goals.calories} cal
@@ -661,8 +688,9 @@ export default function DashboardView({ userId }: { userId: string | null }) {
           )}
           {!goals && <div className="text-gray-500 mb-4">calories</div>}
           
-          {/* Macros grid (Protein, Fat, Carbs) */}
+          {/* Macros grid: Protein, Fat, Carbs */}
           <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-gray-100">
+            {/* Protein */}
             <div>
               <div className="text-xs text-gray-500 mb-1">Protein</div>
               <div className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -674,6 +702,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
+            {/* Fat */}
             <div>
               <div className="text-xs text-gray-500 mb-1">Fat</div>
               <div className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -685,6 +715,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
+            {/* Carbs */}
             <div>
               <div className="text-xs text-gray-500 mb-1">Carbs</div>
               <div className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -698,8 +730,9 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             </div>
           </div>
 
-          {/* Micronutrients grid (Fiber, Sugar, Sodium) */}
+          {/* Micronutrients grid: Fiber, Sugar, Sodium */}
           <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-3 text-sm">
+            {/* Fiber */}
             <div>
               <div className="text-xs text-gray-500 mb-0.5">Fiber</div>
               <div className="font-semibold text-gray-700">
@@ -711,6 +744,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
+            {/* Sugar (lower is better) */}
             <div>
               <div className="text-xs text-gray-500 mb-0.5">Sugar</div>
               <div className="font-semibold text-gray-700">
@@ -722,6 +757,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
+            {/* Sodium (lower is better) */}
             <div>
               <div className="text-xs text-gray-500 mb-0.5">Sodium</div>
               <div className="font-semibold text-gray-700">
@@ -757,6 +794,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                       {formatProgress(todayBiodiversity.total, goals.biodiversity)}
                     </span>
                   )}
+                  {/* Chevron icon */}
                   <svg
                     className={`w-3 h-3 text-gray-700 transition-transform ${
                       expandedBioPeriods.has('today') ? 'rotate-180' : ''
@@ -770,10 +808,11 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               </button>
 
-              {/* Biodiversity breakdown (when expanded) */}
+              {/* Biodiversity breakdown (shows when expanded) */}
               {expandedBioPeriods.has('today') && (
                 <div className="mt-3 p-3 bg-gray-50 rounded-lg">
                   <div className="grid grid-cols-2 gap-2 text-xs">
+                    {/* Fruits */}
                     <div>
                       <div className="text-gray-700 font-medium mb-0.5">🍎 Fruits: {todayBiodiversity.fruits}</div>
                       {todayBiodiversity.items.fruits.length > 0 && (
@@ -783,6 +822,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                         </div>
                       )}
                     </div>
+                    
+                    {/* Vegetables */}
                     <div>
                       <div className="text-gray-700 font-medium mb-0.5">🥦 Veg: {todayBiodiversity.vegetables}</div>
                       {todayBiodiversity.items.vegetables.length > 0 && (
@@ -792,12 +833,18 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                         </div>
                       )}
                     </div>
+                    
+                    {/* Nuts */}
                     <div>
                       <div className="text-gray-700 font-medium mb-0.5">🥜 Nuts: {todayBiodiversity.nuts}</div>
                     </div>
+                    
+                    {/* Legumes */}
                     <div>
                       <div className="text-gray-700 font-medium mb-0.5">🫘 Legumes: {todayBiodiversity.legumes}</div>
                     </div>
+                    
+                    {/* Whole Grains */}
                     <div className="col-span-2">
                       <div className="text-gray-700 font-medium mb-0.5">🌾 Grains: {todayBiodiversity.wholeGrains}</div>
                     </div>
@@ -809,17 +856,19 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         </div>
 
         {/* ---------- 7-DAY AVERAGE CARD ---------- */}
+        {/* Same structure as Today card but with blue theme and 7-day averages */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-2xl p-4 sm:p-6">
-          {/* Same structure as Today card, but with blue colors and 7-day data */}
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-medium text-blue-600">7-Day Average</div>
             {goals && (
               <div className="text-xs font-medium text-blue-500">vs Goal</div>
             )}
           </div>
+          
           <div className="text-4xl sm:text-5xl font-bold text-blue-900 mb-1">
             {sevenDayAvg.calories.toLocaleString()}
           </div>
+          
           {goals && (
             <div className={`text-sm font-semibold mb-2 ${getProgressColor(sevenDayAvg.calories, goals.calories, 'calories').replace('text-', 'text-blue-').replace('600', '700')}`}>
               {formatProgress(sevenDayAvg.calories, goals.calories)} of {goals.calories} cal
@@ -839,6 +888,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-blue-600 mb-1">Fat</div>
               <div className="text-lg sm:text-xl font-semibold text-blue-900">
@@ -850,6 +900,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-blue-600 mb-1">Carbs</div>
               <div className="text-lg sm:text-xl font-semibold text-blue-900">
@@ -875,6 +926,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-blue-600 mb-0.5">Sugar</div>
               <div className="font-semibold text-blue-800">
@@ -886,6 +938,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-blue-600 mb-0.5">Sodium</div>
               <div className="font-semibold text-blue-800">
@@ -899,6 +952,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             </div>
           </div>
 
+          {/* 7-Day Biodiversity */}
           {sevenDayBiodiversity && (
             <div className="mt-4 pt-4 border-t border-blue-200/50">
               <button
@@ -966,17 +1020,19 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         </div>
 
         {/* ---------- 30-DAY AVERAGE CARD ---------- */}
+        {/* Same structure as 7-day card but with purple theme and 30-day averages */}
         <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-2xl p-4 sm:p-6">
-          {/* Same structure as 7-day card, but with purple colors and 30-day data */}
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-medium text-purple-600">30-Day Average</div>
             {goals && (
               <div className="text-xs font-medium text-purple-500">vs Goal</div>
             )}
           </div>
+          
           <div className="text-4xl sm:text-5xl font-bold text-purple-900 mb-1">
             {thirtyDayAvg.calories.toLocaleString()}
           </div>
+          
           {goals && (
             <div className={`text-sm font-semibold mb-2 ${getProgressColor(thirtyDayAvg.calories, goals.calories, 'calories').replace('text-', 'text-purple-').replace('600', '700')}`}>
               {formatProgress(thirtyDayAvg.calories, goals.calories)} of {goals.calories} cal
@@ -996,6 +1052,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-purple-600 mb-1">Fat</div>
               <div className="text-lg sm:text-xl font-semibold text-purple-900">
@@ -1007,6 +1064,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-purple-600 mb-1">Carbs</div>
               <div className="text-lg sm:text-xl font-semibold text-purple-900">
@@ -1032,6 +1090,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-purple-600 mb-0.5">Sugar</div>
               <div className="font-semibold text-purple-800">
@@ -1043,6 +1102,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                 </div>
               )}
             </div>
+            
             <div>
               <div className="text-xs text-purple-600 mb-0.5">Sodium</div>
               <div className="font-semibold text-purple-800">
@@ -1056,6 +1116,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             </div>
           </div>
 
+          {/* 30-Day Biodiversity */}
           {thirtyDayBiodiversity && (
             <div className="mt-4 pt-4 border-t border-purple-200/50">
               <button
@@ -1124,10 +1185,11 @@ export default function DashboardView({ userId }: { userId: string | null }) {
       </div>
 
       {/* ========== DAILY FOOD HISTORY ========== */}
+      {/* Shows last 7 days with expandable meals */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Food History</h2>
         
-        {/* Empty state if no meals logged */}
+        {/* Empty state - no meals logged yet */}
         {dailyData.length === 0 ? (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center">
             <div className="text-gray-400 mb-2">No meals logged yet</div>
@@ -1136,8 +1198,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             </div>
           </div>
         ) : (
+          /* List of days with food logged */
           <div className="space-y-3">
-            {/* Loop through each day */}
             {dailyData.map((day, dayIndex) => {
               const dayKey = dayIndex === 0 ? 'today' : day.dateKey;
               const isExpanded = expandedDays.has(dayKey);
@@ -1149,7 +1211,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                   key={day.dateKey}
                   className="bg-white border border-gray-200 rounded-xl overflow-hidden"
                 >
-                  {/* Day header - click to expand/collapse */}
+                  {/* Day header - Click to expand/collapse */}
                   <button
                     onClick={() => toggleDay(dayKey)}
                     className="w-full px-5 py-4 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
@@ -1181,6 +1243,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                         {day.meals.length} {day.meals.length === 1 ? 'meal' : 'meals'}
                       </div>
                     </div>
+                    {/* Chevron icon */}
                     <svg
                       className={`w-5 h-5 text-gray-400 transition-transform ${
                         isExpanded ? 'rotate-180' : ''
@@ -1193,9 +1256,10 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                     </svg>
                   </button>
 
-                  {/* Day details (when expanded) */}
+                  {/* Day details - Shows when expanded */}
                   {isExpanded && (
                     <div className="border-t border-gray-200 bg-gray-50 p-4">
+                      
                       {/* Daily totals summary */}
                       <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
                         <div className="text-xs font-medium text-gray-500 mb-2">Daily Totals</div>
@@ -1233,7 +1297,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                         </div>
                       </div>
 
-                      {/* Biodiversity for this day */}
+                      {/* Biodiversity for this day - Collapsible */}
                       <div className="mb-4">
                         <button
                           onClick={() => toggleBiodiversity(dayKey)}
@@ -1262,10 +1326,11 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                           </div>
                         </button>
 
-                        {/* Biodiversity breakdown (when expanded) */}
+                        {/* Biodiversity breakdown - Shows when expanded */}
                         {isBioExpanded && (
                           <div className="mt-2 p-3 bg-white border border-green-200 rounded-lg">
                             <div className="grid grid-cols-2 gap-3 text-sm">
+                              {/* Fruits */}
                               <div>
                                 <div className="text-gray-600 mb-1">🍎 Fruits</div>
                                 <div className="font-semibold text-gray-900 mb-1">{day.biodiversity.fruits}</div>
@@ -1276,6 +1341,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                   </div>
                                 )}
                               </div>
+                              
+                              {/* Vegetables */}
                               <div>
                                 <div className="text-gray-600 mb-1">🥦 Vegetables</div>
                                 <div className="font-semibold text-gray-900 mb-1">{day.biodiversity.vegetables}</div>
@@ -1286,6 +1353,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                   </div>
                                 )}
                               </div>
+                              
+                              {/* Nuts */}
                               <div>
                                 <div className="text-gray-600 mb-1">🥜 Nuts & Seeds</div>
                                 <div className="font-semibold text-gray-900 mb-1">{day.biodiversity.nuts}</div>
@@ -1295,6 +1364,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                   </div>
                                 )}
                               </div>
+                              
+                              {/* Legumes */}
                               <div>
                                 <div className="text-gray-600 mb-1">🫘 Legumes</div>
                                 <div className="font-semibold text-gray-900 mb-1">{day.biodiversity.legumes}</div>
@@ -1304,6 +1375,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                   </div>
                                 )}
                               </div>
+                              
+                              {/* Whole Grains */}
                               <div className="col-span-2">
                                 <div className="text-gray-600 mb-1">🌾 Whole Grains</div>
                                 <div className="font-semibold text-gray-900 mb-1">{day.biodiversity.wholeGrains}</div>
@@ -1328,7 +1401,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                               key={meal.meal_type}
                               className="bg-white border border-gray-200 rounded-lg overflow-hidden"
                             >
-                              {/* Meal header - click to expand/collapse */}
+                              {/* Meal header - Click to expand/collapse */}
                               <button
                                 onClick={() => toggleMeal(dayKey, meal.meal_type)}
                                 className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
@@ -1365,7 +1438,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                 </div>
                               </button>
 
-                              {/* Food items in this meal (when expanded) */}
+                              {/* Food items in this meal - Shows when meal is expanded */}
                               {isMealExpanded && (
                                 <div className="px-3 pb-3 space-y-1.5 border-t border-gray-100">
                                   {meal.items.map((item: any, idx: number) => {
@@ -1376,7 +1449,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                         key={idx}
                                         className="py-2 px-3 bg-gray-50 rounded-lg border border-gray-100"
                                       >
-                                        {/* Edit mode - show input fields */}
+                                        {/* EDIT MODE - Show input fields */}
                                         {isEditing ? (
                                           <div className="space-y-2">
                                             <div className="grid grid-cols-2 gap-2">
@@ -1444,7 +1517,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                             </div>
                                           </div>
                                         ) : (
-                                          /* View mode - show food item details */
+                                          /* VIEW MODE - Show food item details with edit and delete buttons */
                                           <>
                                             <div className="flex items-start justify-between mb-1.5">
                                               <div className="flex-1">
@@ -1462,11 +1535,21 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                                                 {/* Edit button */}
                                                 <button
                                                   onClick={() => startEdit(item.id, item)}
-                                                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded"
+                                                  className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                                   title="Edit"
                                                 >
                                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                  </svg>
+                                                </button>
+                                                {/* Delete button */}
+                                                <button
+                                                  onClick={() => deleteItem(item.id)}
+                                                  className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                  title="Delete"
+                                                >
+                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                   </svg>
                                                 </button>
                                               </div>
