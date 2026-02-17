@@ -336,7 +336,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
           .map(day => {
             const mealOrder = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
             const meals = Array.from(day.mealsByType.values())
-              .sort((a, b) => {
+              .sort((a: any, b: any) => {
                 const orderA = mealOrder[a.meal_type as keyof typeof mealOrder] ?? 999;
                 const orderB = mealOrder[b.meal_type as keyof typeof mealOrder] ?? 999;
                 return orderA - orderB;
