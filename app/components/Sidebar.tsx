@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 interface SidebarProps {
   userEmail: string | null;
@@ -9,15 +10,10 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['wellbeing']));
-  const router = useRouter();
   const pathname = usePathname();
 
-  // Toggle sidebar open/closed
-  const toggleSidebar = () => setIsOpen(!isOpen);
-
-  // Toggle section expansion
   const toggleSection = (section: string) => {
     const newExpanded = new Set(expandedSections);
     if (newExpanded.has(section)) {
@@ -28,394 +24,428 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
     setExpandedSections(newExpanded);
   };
 
-  // Navigate to page
-  const navigateTo = (path: string) => {
-    router.push(path);
-    if (window.innerWidth < 1024) {
-      setIsOpen(false); // Close sidebar on mobile after navigation
-    }
+  const getLinkClasses = (path: string) => {
+    const isActive = pathname === path;
+    return `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+      isActive
+        ? 'bg-blue-600 text-white shadow-sm'
+        : 'text-gray-700 hover:bg-gray-100 active:bg-gray-200'
+    }`;
   };
 
-  // Check if current path matches
-  const isActive = (path: string) => pathname === path;
+  const getSubLinkClasses = (path: string) => {
+    const isActive = pathname === path;
+    return `flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all ml-2 ${
+      isActive
+        ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
+        : 'text-gray-600 hover:bg-gray-50 border-l-2 border-transparent hover:border-gray-200'
+    }`;
+  };
+
+  const getSectionButtonClasses = () => {
+    return `w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-100 rounded-lg transition-all`;
+  };
 
   return (
     <>
-      {/* Mobile overlay */}
-      {isOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      {/* Hamburger button - Always visible */}
-      <button
-        onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg hover:bg-gray-50"
-      >
-        <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {isOpen ? (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          ) : (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          )}
-        </svg>
-      </button>
-
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-white border-r border-gray-200 z-40 transition-all duration-300 ${
-          isOpen ? 'w-64' : 'w-0'
-        } overflow-hidden`}
+        className={`fixed lg:sticky top-0 left-0 h-screen bg-white border-r border-gray-200 z-40 transition-all duration-300 flex flex-col ${
+          isCollapsed ? 'w-16' : 'w-64'
+        }`}
       >
-        <div className="h-full flex flex-col">
-          {/* Logo/Brand */}
-          <div className="p-4 border-b border-gray-200">
-            <h1 className="font-bold text-xl text-gray-900">TheraPie</h1>
-            <p className="text-xs text-gray-500">Life's a piece of pie</p>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-3">
-            
-            {/* ========== HOME SECTION ========== */}
-            <div className="mb-3">
-              <button
-                onClick={() => toggleSection('home')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 ${
-                  expandedSections.has('home') ? 'bg-gray-50' : ''
-                }`}
-              >
-                <span className="text-sm font-semibold text-gray-900">Home</span>
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform ${
-                    expandedSections.has('home') ? 'rotate-180' : ''
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              
-              {expandedSections.has('home') && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-3">
-                  <button
-                    onClick={() => navigateTo('/')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/about')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/about') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    About
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ========== WELLBEING SECTION ========== */}
-            <div className="mb-3">
-              <button
-                onClick={() => toggleSection('wellbeing')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 ${
-                  expandedSections.has('wellbeing') ? 'bg-gray-50' : ''
-                }`}
-              >
-                <span className="text-sm font-semibold text-gray-900">WellBeing</span>
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform ${
-                    expandedSections.has('wellbeing') ? 'rotate-180' : ''
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              
-              {expandedSections.has('wellbeing') && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-3">
-                  <button
-                    onClick={() => navigateTo('/wellbeing/dashboard')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/wellbeing/dashboard') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Dashboard
-                  </button>
-                  
-                  {/* Fuel subsection */}
-                  <div className="pt-2">
-                    <div className="text-xs font-semibold text-gray-500 px-3 pb-1">Fuel</div>
-                    <button
-                      onClick={() => navigateTo('/wellbeing/fuel/food-log')}
-                      className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                        isActive('/wellbeing/fuel/food-log') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Food Log
-                    </button>
-                    <button
-                      onClick={() => navigateTo('/wellbeing/fuel/grocery-list')}
-                      className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                        isActive('/wellbeing/fuel/grocery-list') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Grocery List
-                    </button>
-                  </div>
-                  
-                  {/* Body subsection */}
-                  <div className="pt-2">
-                    <div className="text-xs font-semibold text-gray-500 px-3 pb-1">Body</div>
-                    <button
-                      onClick={() => navigateTo('/wellbeing/body/dashboard')}
-                      className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                        isActive('/wellbeing/body/dashboard') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Dashboard
-                    </button>
-                    <button
-                      onClick={() => navigateTo('/wellbeing/body/training-plan')}
-                      className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                        isActive('/wellbeing/body/training-plan') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Training Plan
-                    </button>
-                    <button
-                      onClick={() => navigateTo('/wellbeing/body/progress-photos')}
-                      className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                        isActive('/wellbeing/body/progress-photos') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      Progress Photos
-                    </button>
-                  </div>
-                  
-                  {/* Goals */}
-                  <button
-                    onClick={() => navigateTo('/wellbeing/goals')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm mt-2 ${
-                      isActive('/wellbeing/goals') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Goals
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ========== GROWTH SECTION ========== */}
-            <div className="mb-3">
-              <button
-                onClick={() => toggleSection('growth')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 ${
-                  expandedSections.has('growth') ? 'bg-gray-50' : ''
-                }`}
-              >
-                <span className="text-sm font-semibold text-gray-900">Growth</span>
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform ${
-                    expandedSections.has('growth') ? 'rotate-180' : ''
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              
-              {expandedSections.has('growth') && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-3">
-                  <button
-                    onClick={() => navigateTo('/growth/values')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/growth/values') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Values
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/growth/affirmations')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/growth/affirmations') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Affirmations
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/growth/journal')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/growth/journal') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Journal / Activity Log
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/growth/todo')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/growth/todo') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    To Do List
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/growth/bingo')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/growth/bingo') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Bingo Card
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/growth/vision-board')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/growth/vision-board') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Vision Board
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ========== CONNECTION SECTION ========== */}
-            <div className="mb-3">
-              <button
-                onClick={() => toggleSection('connection')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 ${
-                  expandedSections.has('connection') ? 'bg-gray-50' : ''
-                }`}
-              >
-                <span className="text-sm font-semibold text-gray-900">Connection</span>
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform ${
-                    expandedSections.has('connection') ? 'rotate-180' : ''
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              
-              {expandedSections.has('connection') && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-3">
-                  <button
-                    onClick={() => navigateTo('/connection/my-circle')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/connection/my-circle') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    My Circle
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/connection/food-sharing')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/connection/food-sharing') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Food Sharing
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ========== REPORTS & RESOURCES SECTION ========== */}
-            <div className="mb-3">
-              <button
-                onClick={() => toggleSection('reports')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 ${
-                  expandedSections.has('reports') ? 'bg-gray-50' : ''
-                }`}
-              >
-                <span className="text-sm font-semibold text-gray-900">Reports & Resources</span>
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform ${
-                    expandedSections.has('reports') ? 'rotate-180' : ''
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              
-              {expandedSections.has('reports') && (
-                <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 pl-3">
-                  <button
-                    onClick={() => navigateTo('/reports/year-wrapped')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/reports/year-wrapped') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Year Wrapped
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/reports/monthly')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/reports/monthly') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Monthly Reports
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/reports/story-templates')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/reports/story-templates') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Instagram Story Templates
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/resources/research')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/resources/research') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Research Articles
-                  </button>
-                  <button
-                    onClick={() => navigateTo('/resources/integrations')}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm ${
-                      isActive('/resources/integrations') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    App Integrations
-                  </button>
-                </div>
-              )}
-            </div>
-          </nav>
-
-          {/* User info at bottom */}
-          {userEmail && (
-            <div className="p-4 border-t border-gray-200">
-              <div className="text-xs text-gray-500 mb-2 truncate">{userEmail}</div>
-              <button
-                onClick={onSignOut}
-                className="text-sm text-red-600 hover:text-red-700 font-medium"
-              >
-                Sign Out
-              </button>
+        {/* Header with collapse button */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          {!isCollapsed && (
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">TheraPie</h1>
+              <p className="text-xs text-gray-500 mt-0.5">Life's a piece of pie</p>
             </div>
           )}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg
+              className="w-5 h-5 text-gray-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              {isCollapsed ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              )}
+            </svg>
+          </button>
         </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          {!isCollapsed ? (
+            /* EXPANDED VIEW */
+            <>
+              {/* Home */}
+              <div className="mb-3">
+                <Link href="/" className={getLinkClasses('/')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                  <span>Home</span>
+                </Link>
+                <Link href="/about" className={getLinkClasses('/about')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>About</span>
+                </Link>
+              </div>
+
+              {/* WellBeing */}
+              <div className="mb-3">
+                <button
+                  onClick={() => toggleSection('wellbeing')}
+                  className={getSectionButtonClasses()}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    <span>WellBeing</span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 transition-transform ${
+                      expandedSections.has('wellbeing') ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {expandedSections.has('wellbeing') && (
+                  <div className="mt-1 space-y-0.5">
+                    <Link href="/wellbeing/dashboard" className={getSubLinkClasses('/wellbeing/dashboard')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      <span>Dashboard</span>
+                    </Link>
+                    
+                    <div className="ml-2 mt-2 mb-1">
+                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        Fuel
+                      </div>
+                    </div>
+                    <Link href="/wellbeing/fuel/food-log" className={getSubLinkClasses('/wellbeing/fuel/food-log')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Food Log</span>
+                    </Link>
+                    <Link href="/wellbeing/fuel/grocery-list" className={getSubLinkClasses('/wellbeing/fuel/grocery-list')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <span>Provisions</span>
+                    </Link>
+
+                    <div className="ml-2 mt-2 mb-1">
+                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        Body
+                      </div>
+                    </div>
+                    <Link href="/wellbeing/body/dashboard" className={getSubLinkClasses('/wellbeing/body/dashboard')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span>Dashboard</span>
+                    </Link>
+                    <Link href="/wellbeing/body/training-plan" className={getSubLinkClasses('/wellbeing/body/training-plan')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                      <span>Training Plan</span>
+                    </Link>
+                    <Link href="/wellbeing/body/progress-photos" className={getSubLinkClasses('/wellbeing/body/progress-photos')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Progress Photos</span>
+                    </Link>
+
+                    <Link href="/wellbeing/goals" className={getSubLinkClasses('/wellbeing/goals')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                      </svg>
+                      <span>Goals</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Growth */}
+              <div className="mb-3">
+                <button
+                  onClick={() => toggleSection('growth')}
+                  className={getSectionButtonClasses()}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                    <span>Growth</span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 transition-transform ${
+                      expandedSections.has('growth') ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {expandedSections.has('growth') && (
+                  <div className="mt-1 space-y-0.5">
+                    <Link href="/growth/values" className={getSubLinkClasses('/growth/values')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                      <span>Values</span>
+                    </Link>
+                    <Link href="/growth/affirmations" className={getSubLinkClasses('/growth/affirmations')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                      </svg>
+                      <span>Affirmations</span>
+                    </Link>
+                    <Link href="/growth/journal" className={getSubLinkClasses('/growth/journal')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      <span>Journal</span>
+                    </Link>
+                    <Link href="/growth/todo" className={getSubLinkClasses('/growth/todo')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                      <span>To Do</span>
+                    </Link>
+                    <Link href="/growth/bingo" className={getSubLinkClasses('/growth/bingo')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                      </svg>
+                      <span>Bingo</span>
+                    </Link>
+                    <Link href="/growth/vision-board" className={getSubLinkClasses('/growth/vision-board')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Vision Board</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Connection */}
+              <div className="mb-3">
+                <button
+                  onClick={() => toggleSection('connection')}
+                  className={getSectionButtonClasses()}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <span>Connection</span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 transition-transform ${
+                      expandedSections.has('connection') ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {expandedSections.has('connection') && (
+                  <div className="mt-1 space-y-0.5">
+                    <Link href="/connection/my-circle" className={getSubLinkClasses('/connection/my-circle')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      <span>My Circle</span>
+                    </Link>
+                    <Link href="/connection/food-sharing" className={getSubLinkClasses('/connection/food-sharing')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                      </svg>
+                      <span>Food Sharing</span>
+                    </Link>
+                    <Link href="/connection/instagram-templates" className={getSubLinkClasses('/connection/instagram-templates')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Story Templates</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Reports & Resources */}
+              <div className="mb-3">
+                <button
+                  onClick={() => toggleSection('reports')}
+                  className={getSectionButtonClasses()}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Reports</span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 transition-transform ${
+                      expandedSections.has('reports') ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {expandedSections.has('reports') && (
+                  <div className="mt-1 space-y-0.5">
+                    <Link href="/reports/year-wrapped" className={getSubLinkClasses('/reports/year-wrapped')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Year Wrapped</span>
+                    </Link>
+                    <Link href="/reports/monthly" className={getSubLinkClasses('/reports/monthly')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Monthly</span>
+                    </Link>
+                    <Link href="/reports/research" className={getSubLinkClasses('/reports/research')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      <span>Research</span>
+                    </Link>
+                    <Link href="/reports/integrations" className={getSubLinkClasses('/reports/integrations')}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                      </svg>
+                      <span>Integrations</span>
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Debug */}
+              <div className="pt-3 border-t border-gray-200">
+                <Link href="/debug" className={getLinkClasses('/debug')}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Debug</span>
+                </Link>
+              </div>
+            </>
+          ) : (
+            /* COLLAPSED VIEW - Icons only */
+            <>
+              <Link href="/" className={getLinkClasses('/')} title="Home">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </Link>
+              <Link href="/about" className={getLinkClasses('/about')} title="About">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </Link>
+              <Link href="/wellbeing/dashboard" className={getLinkClasses('/wellbeing/dashboard')} title="WellBeing Dashboard">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </Link>
+              <Link href="/wellbeing/fuel/food-log" className={getLinkClasses('/wellbeing/fuel/food-log')} title="Food Log">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </Link>
+              <Link href="/wellbeing/goals" className={getLinkClasses('/wellbeing/goals')} title="Goals">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+              </Link>
+              <Link href="/growth/values" className={getLinkClasses('/growth/values')} title="Growth">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </Link>
+              <Link href="/connection/my-circle" className={getLinkClasses('/connection/my-circle')} title="Connection">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </Link>
+              <Link href="/debug" className={getLinkClasses('/debug')} title="Debug Tools">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </Link>
+            </>
+          )}
+        </nav>
+
+        {/* User section */}
+        {!isCollapsed && (
+          <div className="p-3 border-t border-gray-200">
+            {userEmail && (
+              <div className="text-xs text-gray-500 mb-2 truncate px-1">{userEmail}</div>
+            )}
+            <button
+              onClick={onSignOut}
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        )}
+
+        {isCollapsed && (
+          <div className="p-3 border-t border-gray-200 flex justify-center">
+            <button
+              onClick={onSignOut}
+              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Sign Out"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );

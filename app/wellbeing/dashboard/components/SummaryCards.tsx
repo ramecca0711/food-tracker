@@ -85,16 +85,16 @@ export default function SummaryCards({
         <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-gray-100">
           <div>
             <div className="text-xs text-gray-500 mb-1">Protein</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-gray-900">
                 {Math.round(todayStats.protein)}
               </span>
+              <span className="text-lg font-semibold text-gray-700">g</span>
               {goals && (
                 <span className="text-xs text-gray-400">
                   /{goals.protein}
                 </span>
               )}
-              <span className="text-sm text-gray-600">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(todayStats.protein, goals.protein, 'macro')}`}>
@@ -104,16 +104,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-1">Fat</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-gray-900">
                 {Math.round(todayStats.fat)}
               </span>
+              <span className="text-lg font-semibold text-gray-700">g</span>
               {goals && (
                 <span className="text-xs text-gray-400">
                   /{goals.fat}
                 </span>
               )}
-              <span className="text-sm text-gray-600">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(todayStats.fat, goals.fat, 'macro')}`}>
@@ -123,16 +123,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-1">Carbs</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-gray-900">
                 {Math.round(todayStats.carbs)}
               </span>
+              <span className="text-lg font-semibold text-gray-700">g</span>
               {goals && (
                 <span className="text-xs text-gray-400">
                   /{goals.carbs}
                 </span>
               )}
-              <span className="text-sm text-gray-600">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(todayStats.carbs, goals.carbs, 'macro')}`}>
@@ -145,16 +145,16 @@ export default function SummaryCards({
         <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-3 text-sm">
           <div>
             <div className="text-xs text-gray-500 mb-0.5">Fiber</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-gray-700">
                 {Math.round(todayStats.fiber)}
               </span>
+              <span className="text-sm font-semibold text-gray-600">g</span>
               {goals && (
                 <span className="text-xs text-gray-400">
                   /{goals.fiber}
                 </span>
               )}
-              <span className="text-xs text-gray-600">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColor(todayStats.fiber, goals.fiber, 'fiber')}`}>
@@ -164,16 +164,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-0.5">Sugar</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-gray-700">
                 {Math.round(todayStats.sugar)}
               </span>
+              <span className="text-sm font-semibold text-gray-600">g</span>
               {goals && (
                 <span className="text-xs text-gray-400">
                   /{goals.sugar}
                 </span>
               )}
-              <span className="text-xs text-gray-600">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColorInverse(todayStats.sugar, goals.sugar)}`}>
@@ -183,16 +183,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-gray-500 mb-0.5">Sodium</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-gray-700">
                 {todayStats.sodium}
               </span>
+              <span className="text-xs font-semibold text-gray-600">mg</span>
               {goals && (
                 <span className="text-xs text-gray-400">
                   /{goals.sodium}
                 </span>
               )}
-              <span className="text-xs text-gray-600">mg</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColorInverse(todayStats.sodium, goals.sodium)}`}>
@@ -201,6 +201,24 @@ export default function SummaryCards({
             )}
           </div>
         </div>
+
+        {/* Biodiversity inline */}
+        {todayBiodiversity && (
+          <div className="pt-3 mt-3 border-t border-gray-100">
+            <div className="text-xs text-gray-500 mb-1">🌱 Biodiversity</div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-semibold text-green-600">
+                {todayBiodiversity.total}
+              </span>
+              <span className="text-sm text-gray-600">foods</span>
+              {goals?.biodiversity && (
+                <span className="text-xs text-gray-400">
+                  /{goals.biodiversity}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {todayBiodiversity && (
           <BiodiversityCard
@@ -239,16 +257,16 @@ export default function SummaryCards({
         <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-blue-200/50">
           <div>
             <div className="text-xs text-blue-600 mb-1">Protein</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-blue-900">
                 {sevenDayAvg.protein}
               </span>
+              <span className="text-lg font-semibold text-blue-700">g</span>
               {goals && (
                 <span className="text-xs text-blue-400">
                   /{goals.protein}
                 </span>
               )}
-              <span className="text-sm text-blue-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(sevenDayAvg.protein, goals.protein, 'macro').replace('text-', 'text-blue-').replace('600', '700')}`}>
@@ -258,16 +276,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-blue-600 mb-1">Fat</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-blue-900">
                 {sevenDayAvg.fat}
               </span>
+              <span className="text-lg font-semibold text-blue-700">g</span>
               {goals && (
                 <span className="text-xs text-blue-400">
                   /{goals.fat}
                 </span>
               )}
-              <span className="text-sm text-blue-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(sevenDayAvg.fat, goals.fat, 'macro').replace('text-', 'text-blue-').replace('600', '700')}`}>
@@ -277,16 +295,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-blue-600 mb-1">Carbs</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-blue-900">
                 {sevenDayAvg.carbs}
               </span>
+              <span className="text-lg font-semibold text-blue-700">g</span>
               {goals && (
                 <span className="text-xs text-blue-400">
                   /{goals.carbs}
                 </span>
               )}
-              <span className="text-sm text-blue-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(sevenDayAvg.carbs, goals.carbs, 'macro').replace('text-', 'text-blue-').replace('600', '700')}`}>
@@ -299,16 +317,16 @@ export default function SummaryCards({
         <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-3 text-sm">
           <div>
             <div className="text-xs text-blue-600 mb-0.5">Fiber</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-blue-800">
                 {sevenDayAvg.fiber}
               </span>
+              <span className="text-sm font-semibold text-blue-700">g</span>
               {goals && (
                 <span className="text-xs text-blue-400">
                   /{goals.fiber}
                 </span>
               )}
-              <span className="text-xs text-blue-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColor(sevenDayAvg.fiber, goals.fiber, 'fiber').replace('text-', 'text-blue-').replace('600', '700')}`}>
@@ -318,16 +336,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-blue-600 mb-0.5">Sugar</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-blue-800">
                 {sevenDayAvg.sugar}
               </span>
+              <span className="text-sm font-semibold text-blue-700">g</span>
               {goals && (
                 <span className="text-xs text-blue-400">
                   /{goals.sugar}
                 </span>
               )}
-              <span className="text-xs text-blue-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColorInverse(sevenDayAvg.sugar, goals.sugar).replace('text-', 'text-blue-').replace('600', '700')}`}>
@@ -337,16 +355,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-blue-600 mb-0.5">Sodium</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-blue-800">
                 {sevenDayAvg.sodium}
               </span>
+              <span className="text-xs font-semibold text-blue-700">mg</span>
               {goals && (
                 <span className="text-xs text-blue-400">
                   /{goals.sodium}
                 </span>
               )}
-              <span className="text-xs text-blue-700">mg</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColorInverse(sevenDayAvg.sodium, goals.sodium).replace('text-', 'text-blue-').replace('600', '700')}`}>
@@ -392,16 +410,16 @@ export default function SummaryCards({
         <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-purple-200/50">
           <div>
             <div className="text-xs text-purple-600 mb-1">Protein</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-purple-900">
                 {thirtyDayAvg.protein}
               </span>
+              <span className="text-lg font-semibold text-purple-700">g</span>
               {goals && (
                 <span className="text-xs text-purple-400">
                   /{goals.protein}
                 </span>
               )}
-              <span className="text-sm text-purple-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(thirtyDayAvg.protein, goals.protein, 'macro').replace('text-', 'text-purple-').replace('600', '700')}`}>
@@ -411,16 +429,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-purple-600 mb-1">Fat</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-purple-900">
                 {thirtyDayAvg.fat}
               </span>
+              <span className="text-lg font-semibold text-purple-700">g</span>
               {goals && (
                 <span className="text-xs text-purple-400">
                   /{goals.fat}
                 </span>
               )}
-              <span className="text-sm text-purple-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(thirtyDayAvg.fat, goals.fat, 'macro').replace('text-', 'text-purple-').replace('600', '700')}`}>
@@ -430,16 +448,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-purple-600 mb-1">Carbs</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="text-lg sm:text-xl font-semibold text-purple-900">
                 {thirtyDayAvg.carbs}
               </span>
+              <span className="text-lg font-semibold text-purple-700">g</span>
               {goals && (
                 <span className="text-xs text-purple-400">
                   /{goals.carbs}
                 </span>
               )}
-              <span className="text-sm text-purple-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-1 ${getProgressColor(thirtyDayAvg.carbs, goals.carbs, 'macro').replace('text-', 'text-purple-').replace('600', '700')}`}>
@@ -452,16 +470,16 @@ export default function SummaryCards({
         <div className="grid grid-cols-3 gap-3 sm:gap-4 pt-3 text-sm">
           <div>
             <div className="text-xs text-purple-600 mb-0.5">Fiber</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-purple-800">
                 {thirtyDayAvg.fiber}
               </span>
+              <span className="text-sm font-semibold text-purple-700">g</span>
               {goals && (
                 <span className="text-xs text-purple-400">
                   /{goals.fiber}
                 </span>
               )}
-              <span className="text-xs text-purple-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColor(thirtyDayAvg.fiber, goals.fiber, 'fiber').replace('text-', 'text-purple-').replace('600', '700')}`}>
@@ -471,16 +489,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-purple-600 mb-0.5">Sugar</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-purple-800">
                 {thirtyDayAvg.sugar}
               </span>
+              <span className="text-sm font-semibold text-purple-700">g</span>
               {goals && (
                 <span className="text-xs text-purple-400">
                   /{goals.sugar}
                 </span>
               )}
-              <span className="text-xs text-purple-700">g</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColorInverse(thirtyDayAvg.sugar, goals.sugar).replace('text-', 'text-purple-').replace('600', '700')}`}>
@@ -490,16 +508,16 @@ export default function SummaryCards({
           </div>
           <div>
             <div className="text-xs text-purple-600 mb-0.5">Sodium</div>
-            <div>
+            <div className="flex items-baseline gap-1">
               <span className="font-semibold text-purple-800">
                 {thirtyDayAvg.sodium}
               </span>
+              <span className="text-xs font-semibold text-purple-700">mg</span>
               {goals && (
                 <span className="text-xs text-purple-400">
                   /{goals.sodium}
                 </span>
               )}
-              <span className="text-xs text-purple-700">mg</span>
             </div>
             {goals && (
               <div className={`text-xs font-medium mt-0.5 ${getProgressColorInverse(thirtyDayAvg.sodium, goals.sodium).replace('text-', 'text-purple-').replace('600', '700')}`}>

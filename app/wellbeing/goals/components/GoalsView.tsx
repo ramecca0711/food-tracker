@@ -76,14 +76,12 @@ export default function GoalsView({ userId }: { userId: string | null }) {
     if (data) {
       setExistingGoals(data);
       
-      // Populate form
       setAge(data.age?.toString() || '');
       setGender(data.gender || 'male');
       setActivityLevel(data.activity_level || 'moderate');
       setGoalType(data.goal_type || 'maintain');
       setTimelineWeeks(data.timeline_weeks?.toString() || '12');
       
-      // Convert stored height to display units
       if (data.height_cm) {
         const cm = parseFloat(data.height_cm);
         const inches = cm / 2.54;
@@ -95,7 +93,6 @@ export default function GoalsView({ userId }: { userId: string | null }) {
         setHeightInches(remainingInches.toString());
       }
       
-      // Convert stored weight to display units
       if (data.weight_kg) {
         const kg = parseFloat(data.weight_kg);
         const lbs = kg * 2.20462;
@@ -111,7 +108,6 @@ export default function GoalsView({ userId }: { userId: string | null }) {
       setTargetCarbs(data.target_carbs || 0);
       setTargetFiber(data.target_fiber || 25);
       
-      // Overrides
       if (data.override_calories) {
         setOverrideCalories(true);
         setCustomCalories(data.override_calories.toString());
@@ -159,7 +155,6 @@ export default function GoalsView({ userId }: { userId: string | null }) {
   // ============================================================================
 
   const calculateGoals = () => {
-    // Convert to metric for calculations
     let heightInCm: number;
     let weightInKg: number;
 
@@ -179,7 +174,6 @@ export default function GoalsView({ userId }: { userId: string | null }) {
       return;
     }
 
-    // Calculate BMR using Mifflin-St Jeor
     let bmr: number;
     if (gender === 'male') {
       bmr = 10 * weightInKg + 6.25 * heightInCm - 5 * ageNum + 5;
@@ -187,7 +181,6 @@ export default function GoalsView({ userId }: { userId: string | null }) {
       bmr = 10 * weightInKg + 6.25 * heightInCm - 5 * ageNum - 161;
     }
 
-    // Activity multipliers
     const activityMultipliers: { [key: string]: number } = {
       sedentary: 1.2,
       light: 1.375,
@@ -199,44 +192,36 @@ export default function GoalsView({ userId }: { userId: string | null }) {
     const calculatedTdee = Math.round(bmr * activityMultipliers[activityLevel]);
     setTdee(calculatedTdee);
 
-    // Adjust for goal
     let calories = calculatedTdee;
     const weeksNum = parseInt(timelineWeeks) || 12;
 
     if (goalType === 'lose') {
-      // 500 cal deficit per day = 1lb per week
       calories = calculatedTdee - 500;
     } else if (goalType === 'gain') {
-      // 300 cal surplus per day = ~0.5lb per week
       calories = calculatedTdee + 300;
     }
 
     setTargetCalories(calories);
 
-    // Macros
-    // Protein: 0.8-1g per lb body weight (or 1.8-2.2g per kg)
     const protein = Math.round(weightInKg * 2.0);
     setTargetProtein(protein);
 
-    // Fat: 25-30% of calories
     const fatCals = calories * 0.275;
     const fat = Math.round(fatCals / 9);
     setTargetFat(fat);
 
-    // Carbs: remainder
     const proteinCals = protein * 4;
     const fatCalories = fat * 9;
     const carbCals = calories - proteinCals - fatCalories;
     const carbs = Math.round(carbCals / 4);
     setTargetCarbs(carbs);
 
-    // Fiber: 14g per 1000 calories
     const fiber = Math.round((calories / 1000) * 14);
     setTargetFiber(fiber);
   };
 
   // ============================================================================
-  // SAVE GOALS
+  // SAVE GOALS - FIXED ERROR
   // ============================================================================
 
   const saveGoals = async () => {
@@ -245,7 +230,6 @@ export default function GoalsView({ userId }: { userId: string | null }) {
     setIsSaving(true);
 
     try {
-      // Convert to metric for storage
       let heightInCm: number;
       let weightInKg: number;
 
@@ -288,21 +272,45 @@ export default function GoalsView({ userId }: { userId: string | null }) {
         .from('user_goals')
         .upsert(goalsData);
 
-      if (goalsError) throw goalsError;
+      if (goalsError) {
+        console.error('Goals error:', goalsError);
+        throw goalsError;
+      }
 
-      // Insert to goals_history
+      // Insert to goals_history (only fields that exist in the table)
+      const historyData = {
+        user_id: userId,
+        target_calories: targetCalories,
+        target_protein: targetProtein,
+        target_fat: targetFat,
+        target_carbs: targetCarbs,
+        target_fiber: targetFiber,
+        override_calories: overrideCalories ? parseInt(customCalories) : null,
+        override_protein: overrideProtein ? parseFloat(customProtein) : null,
+        override_fat: overrideFat ? parseFloat(customFat) : null,
+        override_carbs: overrideCarbs ? parseFloat(customCarbs) : null,
+        override_fiber: overrideFiber ? parseFloat(customFiber) : null,
+        sugar_limit: parseInt(sugarLimit) || 50,
+        sodium_limit: parseInt(sodiumLimit) || 2300,
+        biodiversity_target: parseInt(biodiversityTarget) || 5,
+        goal_type: goalType,
+      };
+
       const { error: historyError } = await supabase
         .from('goals_history')
-        .insert(goalsData);
+        .insert(historyData);
 
-      if (historyError) throw historyError;
+      if (historyError) {
+        console.error('History error:', historyError);
+        throw historyError;
+      }
 
       alert('✅ Goals saved successfully!');
       loadGoals();
       loadGoalsHistory();
     } catch (error) {
       console.error('Error saving goals:', error);
-      alert('Failed to save goals');
+      alert('Failed to save goals: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsSaving(false);
     }
