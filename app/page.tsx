@@ -2,17 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import DashboardView from './components/DashboardView';
-import LogFoodView from './components/LogFoodView';
-import GoalsView from './components/GoalsView';
+import { useRouter } from 'next/navigation';
+import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
 
 export default function Home() {
-  const [view, setView] = useState<'dashboard' | 'log' | 'goals'>('dashboard');
   const [userId, setUserId] = useState<string | null>(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const router = useRouter();
+
   useEffect(() => {
     checkUser();
 
@@ -49,169 +48,105 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-white">
-      {/* HEADER - Different layouts for mobile vs desktop */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-        <div className="max-w-4xl mx-auto px-4">
-          
-          {/* ========== MOBILE HEADER (hidden on desktop) ========== */}
-          <div className="lg:hidden py-3">
-            {/* Top row: Logo + Sign Out/Sign In */}
-            <div className="flex items-center justify-between mb-3">
-              <h1 className="text-lg font-semibold text-gray-900">Food Log AI</h1>
-              {userId ? (
-                <button
-                  onClick={handleSignOut}
-                  className="text-sm text-gray-600 hover:text-gray-900"
-                >
-                  Sign Out
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowAuthModal(true)}
-                  className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
-                >
-                  Sign In
-                </button>
-              )}
-            </div>
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar - only show when logged in */}
+      {userId && (
+        <Sidebar userEmail={userEmail} onSignOut={handleSignOut} />
+      )}
 
-            {/* Bottom row: Nav tabs (only when logged in) */}
-            {userId && (
-              <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setView('dashboard')}
-                  className={`flex-1 py-2.5 rounded-md text-xs font-medium transition-all ${
-                    view === 'dashboard'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600'
-                  }`}
-                >
-                  📊 Dashboard
-                </button>
-                <button
-                  onClick={() => setView('log')}
-                  className={`flex-1 py-2.5 rounded-md text-xs font-medium transition-all ${
-                    view === 'log'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600'
-                  }`}
-                >
-                  🍽️ Log
-                </button>
-                <button
-                  onClick={() => setView('goals')}
-                  className={`flex-1 py-2.5 rounded-md text-xs font-medium transition-all ${
-                    view === 'goals'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600'
-                  }`}
-                >
-                  🎯 Goals
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* ========== DESKTOP HEADER (hidden on mobile) ========== */}
-          <div className="hidden lg:flex items-center justify-between py-4">
-            <h1 className="text-xl font-semibold text-gray-900">Food Log AI</h1>
-            
-            {userId ? (
-              <div className="flex items-center gap-4">
-                {/* Desktop nav tabs */}
-                <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => setView('dashboard')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                      view === 'dashboard'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    onClick={() => setView('log')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                      view === 'log'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Log Food
-                  </button>
-                  <button
-                    onClick={() => setView('goals')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                      view === 'goals'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    Goals
-                  </button>
-                </div>
-                
-                {/* User email + Sign out */}
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600">{userEmail}</span>
-                  <button
-                    onClick={handleSignOut}
-                    className="text-sm text-gray-600 hover:text-gray-900"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowAuthModal(true)}
-                className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-              >
-                Sign In
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* MAIN CONTENT - Responsive padding */}
-      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
+      {/* Main content */}
+      <main className={`flex-1 ${userId ? 'lg:ml-16' : ''}`}>
         {userId ? (
-          <>
-            {view === 'dashboard' ? (
-              <DashboardView userId={userId} />
-            ) : view === 'log' ? (
-              <LogFoodView userId={userId} />
-            ) : (
-              <GoalsView userId={userId} />
-            )}
-          </>
+          /* Home Dashboard - logged in view */
+          <div className="p-8 pt-20 lg:pt-8">
+            <div className="max-w-6xl mx-auto">
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome to TheraPie 🥧</h1>
+              <p className="text-xl text-gray-600 mb-8">Life's a piece of pie</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Quick access cards */}
+                <button
+                  onClick={() => router.push('/wellbeing/fuel/food-log')}
+                  className="p-6 bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                >
+                  <div className="text-4xl mb-3">🍽️</div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">Food Log</h3>
+                  <p className="text-sm text-gray-600">Track your nutrition</p>
+                </button>
+
+                <button
+                  onClick={() => router.push('/wellbeing/goals')}
+                  className="p-6 bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                >
+                  <div className="text-4xl mb-3">🎯</div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">Goals</h3>
+                  <p className="text-sm text-gray-600">Set and track your goals</p>
+                </button>
+
+                <button
+                  onClick={() => router.push('/wellbeing/dashboard')}
+                  className="p-6 bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                >
+                  <div className="text-4xl mb-3">📊</div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">Dashboard</h3>
+                  <p className="text-sm text-gray-600">View your progress</p>
+                </button>
+
+                <button
+                  onClick={() => router.push('/growth/journal')}
+                  className="p-6 bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                >
+                  <div className="text-4xl mb-3">📝</div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">Journal</h3>
+                  <p className="text-sm text-gray-600">Reflect on your day</p>
+                </button>
+
+                <button
+                  onClick={() => router.push('/growth/values')}
+                  className="p-6 bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                >
+                  <div className="text-4xl mb-3">💎</div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">Values</h3>
+                  <p className="text-sm text-gray-600">Define what matters</p>
+                </button>
+
+                <button
+                  onClick={() => router.push('/about')}
+                  className="p-6 bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                >
+                  <div className="text-4xl mb-3">ℹ️</div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">About</h3>
+                  <p className="text-sm text-gray-600">Learn about TheraPie</p>
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 sm:py-20">
-            <div className="text-center max-w-md px-4">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
-                Welcome to Food Log AI
-              </h2>
-              <p className="text-gray-600 mb-6 sm:mb-8 text-sm sm:text-base">
-                Track your nutrition with AI-powered food logging, biodiversity insights, and personalized goals.
+          /* Landing page - not logged in */
+          <div className="flex flex-col items-center justify-center min-h-screen p-8">
+            <div className="text-center max-w-2xl">
+              <div className="text-8xl mb-6">🥧</div>
+              <h1 className="text-5xl font-bold text-gray-900 mb-4">TheraPie</h1>
+              <p className="text-2xl text-gray-600 mb-8">Life's a piece of pie</p>
+              <p className="text-lg text-gray-600 mb-8">
+                Structure your wellbeing, growth, and connections. Track nutrition, set goals, 
+                journal your journey, and celebrate life one slice at a time.
               </p>
               <button
                 onClick={() => setShowAuthModal(true)}
-                className="w-full sm:w-auto px-8 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
+                className="px-8 py-4 bg-blue-600 text-white text-lg font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-lg"
               >
                 Get Started
               </button>
             </div>
           </div>
         )}
-      </div>
+      </main>
 
-      {/* AUTH MODAL */}
+      {/* Auth Modal */}
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} />
       )}
-    </main>
+    </div>
   );
 }

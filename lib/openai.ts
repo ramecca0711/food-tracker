@@ -15,6 +15,7 @@ export interface FoodItem {
   sugar: number;
   sodium: number;
   categories: string[];
+  whole_food_ingredients: string[]; // NEW - actual ingredients for biodiversity
 }
 
 export interface MealGroup {
@@ -24,7 +25,7 @@ export interface MealGroup {
 }
 
 export interface ParsedFood {
-  meals: MealGroup[];  // Changed from single items array to multiple meals
+  meals: MealGroup[];
 }
 
 export async function parseFood(description: string): Promise<ParsedFood> {
@@ -52,6 +53,18 @@ FOOD CATEGORIES (assign ALL that apply):
 - fat: oils, nuts, seeds, avocado
 - beverage: coffee, tea, juice, soda, water
 
+WHOLE FOOD INGREDIENTS (CRITICAL FOR BIODIVERSITY):
+For each food item, extract the actual whole food ingredients:
+- "blueberry jam" → ["blueberry"]
+- "spinach and feta kolache" → ["spinach"]
+- "chicken katsu with rice" → ["chicken", "rice"]
+- "strawberry yogurt" → ["strawberry"]
+- "avocado toast" → ["avocado", "bread"]
+- "greek salad" → ["cucumber", "tomato", "olives", "feta"]
+- Only include WHOLE, UNPROCESSED ingredients (fruits, vegetables, nuts, legumes, whole grains)
+- Do NOT include processed items like "jam", "bread" (unless whole grain), "pasta" (unless whole grain)
+- Be specific: "spinach", "kale", "broccoli" not just "greens"
+
 MICRONUTRIENTS (estimate if common food, use 0 if uncertain):
 - fiber (g): whole grains, fruits, vegetables, legumes
 - sugar (g): natural and added sugars
@@ -67,7 +80,6 @@ Current time context: ${currentHour}:00 (use this to help guess meal type if amb
 
 Return ONLY valid JSON in this format:
 
-SINGLE MEAL EXAMPLE:
 {
   "meals": [
     {
@@ -75,58 +87,17 @@ SINGLE MEAL EXAMPLE:
       "confidence": 0.95,
       "items": [
         {
-          "food_name": "scrambled eggs",
-          "quantity": "2 large",
-          "calories": 140,
-          "protein": 12,
-          "fat": 10,
-          "carbs": 1,
-          "fiber": 0,
-          "sugar": 1,
-          "sodium": 140,
-          "categories": ["protein", "dairy"]
-        }
-      ]
-    }
-  ]
-}
-
-MULTIPLE MEALS EXAMPLE:
-{
-  "meals": [
-    {
-      "meal_type": "breakfast",
-      "confidence": 0.95,
-      "items": [
-        {
-          "food_name": "scrambled eggs",
-          "quantity": "2 large",
-          "calories": 140,
-          "protein": 12,
-          "fat": 10,
-          "carbs": 1,
-          "fiber": 0,
-          "sugar": 1,
-          "sodium": 140,
-          "categories": ["protein", "dairy"]
-        }
-      ]
-    },
-    {
-      "meal_type": "lunch",
-      "confidence": 0.90,
-      "items": [
-        {
-          "food_name": "chicken salad",
-          "quantity": "1 bowl",
-          "calories": 350,
-          "protein": 30,
-          "fat": 15,
-          "carbs": 20,
-          "fiber": 5,
-          "sugar": 8,
-          "sodium": 450,
-          "categories": ["protein", "vegetable"]
+          "food_name": "blueberry jam on toast",
+          "quantity": "2 slices",
+          "calories": 220,
+          "protein": 4,
+          "fat": 3,
+          "carbs": 42,
+          "fiber": 2,
+          "sugar": 18,
+          "sodium": 180,
+          "categories": ["grain", "fruit"],
+          "whole_food_ingredients": ["blueberry"]
         }
       ]
     }
