@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     let successCount = 0;
     let errorCount = 0;
     let cacheHits = 0;
-    let usdaHits = 0;
+    let offHits = 0;
     let aiHits = 0;
 
     // Process each item
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         
         // Track source
         if (macroData.source === 'cache') cacheHits++;
-        else if (macroData.source === 'usda') usdaHits++;
+        else if (macroData.source === 'openfoodfacts') offHits++;
         else if (macroData.source === 'ai') aiHits++;
 
         // Calculate based on quantity
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
       total: items.length,
       sources: {
         cache: cacheHits,
-        usda: usdaHits,
+        openfoodfacts: offHits,
         ai: aiHits
       }
     });

@@ -173,17 +173,17 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   
   const handleConfirm = async () => {
     if (!editingMeals.length || !userId) return;
-    
+
     setIsSaving(true);
-    
+
     try {
       const allItemsToInsert = [];
       const selectedDateTime = new Date(selectedDate + 'T12:00:00');
-      
+
       for (let i = 0; i < editingMeals.length; i++) {
         const meal = editingMeals[i];
         const mealGroupId = crypto.randomUUID();
-        
+
         const mealItems = (meal.items || []).map((item: any) => ({
           user_id: userId,
           food_name: item.food_name,
@@ -203,28 +203,58 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
           eating_out: mealEatingOut.get(i) || false,
           logged_at: selectedDateTime.toISOString(),
         }));
-        
+
         allItemsToInsert.push(...mealItems);
       }
 
+      // 1. Insert food_items
       const { error } = await supabase
         .from('food_items')
         .insert(allItemsToInsert);
 
       if (error) throw error;
 
+      // 2. Upsert cache_candidates into master_food_database (deferred write)
+      const cacheCandidates: any[] = (parsedData?.cache_candidates ?? []).filter(Boolean);
+      if (cacheCandidates.length > 0) {
+        const { error: upsertError } = await supabase
+          .from('master_food_database')
+          .upsert(cacheCandidates, {
+            onConflict: 'normalized_name',
+            ignoreDuplicates: false,
+          });
+        if (upsertError) {
+          // Non-fatal: log but don't block save
+          console.warn('[handleConfirm] cache upsert error:', upsertError);
+        }
+      }
+
+      // 3. Fire-and-forget: increment times_used for cache hits
+      const cacheHitNames: string[] = editingMeals
+        .flatMap((meal: any) => meal.items || [])
+        .filter((item: any) => item.cache_hit)
+        .map((item: any) => item.food_name as string);
+
+      if (cacheHitNames.length > 0) {
+        supabase
+          .rpc('increment_times_used', { food_names: cacheHitNames })
+          .then(({ error: rpcError }) => {
+            if (rpcError) console.warn('[handleConfirm] increment_times_used RPC error:', rpcError);
+          });
+      }
+
       console.log('✅ Saved all meals to database!');
-      
+
       setFoodInput('');
       setParsedData(null);
       setEditingMeals([]);
       setMealNotes(new Map());
       setMealEatingOut(new Map());
-      
+
       setTimeout(() => {
         window.dispatchEvent(new Event('foodLogged'));
       }, 100);
-      
+
     } catch (error) {
       console.error('Error saving:', error);
       alert('Failed to save. Please try again.');
