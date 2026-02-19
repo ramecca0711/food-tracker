@@ -1,5 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { NextResponse } from 'next/server';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -400,6 +399,10 @@ export async function POST(request: NextRequest) {
 
       return lookupMacros(raw.lookup_name, raw.inline_macros);
     });
+  }
+
+  return meals;
+}
 
     const lookupResults = await Promise.all(lookupPromises);
 
