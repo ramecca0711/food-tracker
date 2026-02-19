@@ -10,15 +10,18 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const OFF_SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl';
+const OFF_PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product';
+const TIMEOUT_MS = 30_000;
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-export interface FoodMacros {
-  food_name: string;
+type FoodMacrosPer100g = {
+  name: string;
   brand?: string | null;
   calories_per_100g: number;
   protein_per_100g: number;
@@ -30,226 +33,242 @@ export interface FoodMacros {
   serving_size_label?: string | null;
   serving_g?: number | null;
   serving_ml?: number | null;
-  source: 'cache' | 'openfoodfacts' | 'ai';
-  match_confidence?: number | null;
-  match_notes?: string | null;
-  unverified?: boolean;
-  // Only present on cache hits (to increment times_used later)
-  cache_hit?: boolean;
-}
-
-export interface CacheCandidate {
-  normalized_name: string;
-  food_name: string;
-  brand?: string | null;
-  calories_per_100g: number;
-  protein_per_100g: number;
-  fat_per_100g: number;
-  carbs_per_100g: number;
-  fiber_per_100g: number;
-  sugar_per_100g: number;
-  sodium_mg_per_100g: number;
-  serving_size_label?: string | null;
-  serving_g?: number | null;
-  serving_ml?: number | null;
-  source: string;
-  unverified?: boolean;
-  match_confidence?: number | null;
-  match_notes?: string | null;
-}
+};
 
 // ============================================================================
 // SCORING
+// Composite = max(Jaccard, tokenContainment) — fixes branded items where the
+// candidate has extra descriptor words that tank a pure Jaccard score.
 // ============================================================================
 
-function tokenize(s: string): Set<string> {
-  return new Set(
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(Boolean)
-  );
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 1;
-  const intersection = new Set([...a].filter((x) => b.has(x)));
-  const union = new Set([...a, ...b]);
-  return intersection.size / union.size;
-}
-
-// Token containment: what fraction of query tokens appear in candidate?
-// Great for branded items where the candidate has extra descriptor words.
-function tokenContainment(query: Set<string>, candidate: Set<string>): number {
-  if (query.size === 0) return 0;
-  const matches = [...query].filter((t) => candidate.has(t)).length;
-  return matches / query.size;
-}
-
-// Composite score: whichever metric is more favourable wins.
-function compositeScore(queryStr: string, candidateStr: string): number {
-  const q = tokenize(queryStr);
-  const c = tokenize(candidateStr);
-  return Math.max(jaccard(q, c), tokenContainment(q, c));
-}
-
-const CACHE_SCORE_THRESHOLD = 0.60;
-
-// ============================================================================
-// NORMALISATION
-// ============================================================================
-
-function normalizeName(name: string): string {
-  return name
+const normalize = (s: string) =>
+  s
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+function tokenSet(s: string): Set<string> {
+  return new Set(normalize(s).split(' ').filter(Boolean));
+}
+
+function jaccard(A: Set<string>, B: Set<string>): number {
+  const inter = [...A].filter((x) => B.has(x)).length;
+  const union = new Set([...A, ...B]).size;
+  return union ? inter / union : 0;
+}
+
+// What fraction of query tokens are contained in the candidate?
+function containment(query: Set<string>, candidate: Set<string>): number {
+  if (!query.size) return 0;
+  return [...query].filter((t) => candidate.has(t)).length / query.size;
+}
+
+function compositeScore(a: string, b: string): number {
+  const A = tokenSet(a);
+  const B = tokenSet(b);
+  return Math.max(jaccard(A, B), containment(A, B));
+}
+
+const CACHE_THRESHOLD = 0.60;
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function withTimeout<T>(p: Promise<T>, ms = TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); })
+     .catch((e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+function hasCompleteOFF(n: any): boolean {
+  return (
+    n?.['energy-kcal_100g'] != null &&
+    n?.['proteins_100g'] != null &&
+    n?.['fat_100g'] != null &&
+    n?.['carbohydrates_100g'] != null &&
+    n?.['sugars_100g'] != null &&
+    n?.['fiber_100g'] != null &&
+    n?.['sodium_100g'] != null
+  );
+}
+
+function offToFood(p: any): FoodMacrosPer100g {
+  const n = p.nutriments;
+  // OFF sodium_100g is in grams — convert to mg
+  const sodium_mg_per_100g = Number(n['sodium_100g'] || 0) * 1000;
+  const servingLabel = p.serving_size || null;
+  const servingQty = p.serving_quantity != null ? Number(p.serving_quantity) : null;
+  let serving_g: number | null = null;
+  let serving_ml: number | null = null;
+  if (servingQty && servingLabel) {
+    const s = String(servingLabel).toLowerCase();
+    if (s.includes('ml') || s.includes('fl oz')) serving_ml = servingQty;
+    else if (s.includes('g')) serving_g = servingQty;
+  }
+  return {
+    name: p.product_name || p.generic_name || 'Unknown food',
+    brand: p.brands ? String(p.brands).split(',')[0].trim() : null,
+    calories_per_100g: Number(n['energy-kcal_100g'] || 0),
+    protein_per_100g: Number(n['proteins_100g'] || 0),
+    fat_per_100g: Number(n['fat_100g'] || 0),
+    carbs_per_100g: Number(n['carbohydrates_100g'] || 0),
+    fiber_per_100g: Number(n['fiber_100g'] || 0),
+    sugar_per_100g: Number(n['sugars_100g'] || 0),
+    sodium_mg_per_100g,
+    serving_size_label: servingLabel,
+    serving_g,
+    serving_ml,
+  };
+}
+
+function makeCacheCandidate(foodName: string, food: FoodMacrosPer100g, source: string, score: number, notes: string | null, unverified: boolean) {
+  return {
+    normalized_name: normalize(foodName),
+    food_name: food.name,
+    brand: food.brand ?? null,
+    calories_per_100g: food.calories_per_100g,
+    protein_per_100g: food.protein_per_100g,
+    fat_per_100g: food.fat_per_100g,
+    carbs_per_100g: food.carbs_per_100g,
+    fiber_per_100g: food.fiber_per_100g,
+    sugar_per_100g: food.sugar_per_100g,
+    sodium_mg_per_100g: food.sodium_mg_per_100g,
+    serving_size_label: food.serving_size_label ?? null,
+    serving_g: food.serving_g ?? null,
+    serving_ml: food.serving_ml ?? null,
+    source,
+    unverified,
+    match_confidence: score,
+    match_notes: notes,
+  };
 }
 
 // ============================================================================
-// SUPABASE CACHE — two-attempt strategy
-//   Attempt 1: search by full food name
-//   Attempt 2: search by individual meaningful tokens (OR across normalized_name)
+// 1. SUPABASE CACHE — two-attempt strategy
+//    Attempt 1: full name ilike search
+//    Attempt 2: per-token AND filter (catches partial matches)
 // ============================================================================
 
-async function queryCache(foodName: string): Promise<FoodMacros | null> {
-  const normalized = normalizeName(foodName);
+async function lookupCache(foodName: string) {
+  const n = normalize(foodName);
 
-  // Attempt 1: full name search
-  const { data: attempt1 } = await supabase
-    .from('master_food_database')
-    .select('*')
-    .ilike('normalized_name', `%${normalized}%`)
-    .order('times_used', { ascending: false })
-    .limit(10);
-
-  const best1 = pickBestCacheMatch(normalized, attempt1 ?? []);
-  if (best1) return best1;
-
-  // Attempt 2: per-token fallback — find rows containing ALL meaningful tokens
-  const tokens = normalized.split(' ').filter((t) => t.length > 2);
-  if (tokens.length <= 1) return null; // no point running a second pass
-
-  // Build a query that requires every token to appear somewhere in normalized_name
-  let query = supabase
-    .from('master_food_database')
-    .select('*')
-    .order('times_used', { ascending: false })
-    .limit(10);
-
-  for (const token of tokens) {
-    query = query.ilike('normalized_name', `%${token}%`);
+  async function pickBest(rows: any[]): Promise<any | null> {
+    if (!rows?.length) return null;
+    const scored = rows.map((row: any) => ({
+      row,
+      score: compositeScore(n, row.normalized_name || row.food_name || ''),
+    })).sort((a: any, b: any) => b.score - a.score);
+    const best = scored[0];
+    return best.score >= CACHE_THRESHOLD ? best : null;
   }
 
-  const { data: attempt2 } = await query;
-  return pickBestCacheMatch(normalized, attempt2 ?? []);
-}
+  // Attempt 1: full normalized name substring match
+  const { data: rows1 } = await supabase
+    .from('master_food_database')
+    .select('*')
+    .ilike('normalized_name', `%${n}%`)
+    .order('times_used', { ascending: false })
+    .limit(10);
 
-function pickBestCacheMatch(queryNorm: string, rows: any[]): FoodMacros | null {
-  if (!rows || rows.length === 0) return null;
+  let best = await pickBest(rows1 ?? []);
 
-  let bestScore = 0;
-  let bestRow: any = null;
-
-  for (const row of rows) {
-    const score = compositeScore(queryNorm, row.normalized_name ?? row.food_name);
-    if (score > bestScore) {
-      bestScore = score;
-      bestRow = row;
+  // Attempt 2: per-token AND filter (catches cases where full phrase doesn't match)
+  if (!best) {
+    const tokens = n.split(' ').filter((t) => t.length > 2);
+    if (tokens.length > 1) {
+      let q = supabase
+        .from('master_food_database')
+        .select('*')
+        .order('times_used', { ascending: false })
+        .limit(10);
+      for (const token of tokens) {
+        q = q.ilike('normalized_name', `%${token}%`);
+      }
+      const { data: rows2 } = await q;
+      best = await pickBest(rows2 ?? []);
     }
   }
 
-  if (bestScore < CACHE_SCORE_THRESHOLD || !bestRow) return null;
+  if (!best) return null;
+
+  const r = best.row;
+  const food: FoodMacrosPer100g = {
+    name: r.food_name,
+    brand: r.brand ?? null,
+    calories_per_100g: Number(r.calories_per_100g || 0),
+    protein_per_100g: Number(r.protein_per_100g || 0),
+    fat_per_100g: Number(r.fat_per_100g || 0),
+    carbs_per_100g: Number(r.carbs_per_100g || 0),
+    fiber_per_100g: Number(r.fiber_per_100g || 0),
+    sugar_per_100g: Number(r.sugar_per_100g || 0),
+    sodium_mg_per_100g: Number(r.sodium_mg_per_100g || 0),
+    serving_size_label: r.serving_size_label ?? null,
+    serving_g: r.serving_g ?? null,
+    serving_ml: r.serving_ml ?? null,
+  };
 
   return {
-    food_name: bestRow.food_name,
-    brand: bestRow.brand ?? null,
-    calories_per_100g: bestRow.calories_per_100g ?? 0,
-    protein_per_100g: bestRow.protein_per_100g ?? 0,
-    fat_per_100g: bestRow.fat_per_100g ?? 0,
-    carbs_per_100g: bestRow.carbs_per_100g ?? 0,
-    fiber_per_100g: bestRow.fiber_per_100g ?? 0,
-    sugar_per_100g: bestRow.sugar_per_100g ?? 0,
-    sodium_mg_per_100g: bestRow.sodium_mg_per_100g ?? 0,
-    serving_size_label: bestRow.serving_size_label ?? null,
-    serving_g: bestRow.serving_g ?? null,
-    serving_ml: bestRow.serving_ml ?? null,
-    source: 'cache',
-    match_confidence: bestScore,
-    match_notes: `Jaccard/containment score: ${bestScore.toFixed(2)}`,
-    unverified: bestRow.unverified ?? false,
+    source: 'cache' as const,
+    food,
+    match_description: r.food_name,
+    match_score: best.score,
+    unverified: r.source === 'ai' || !!r.unverified,
+    cache_candidate: null,  // already in DB — no write needed
     cache_hit: true,
   };
 }
 
 // ============================================================================
-// OPEN FOOD FACTS
+// 2. OPEN FOOD FACTS
 // ============================================================================
 
-async function queryOpenFoodFacts(foodName: string): Promise<FoodMacros | null> {
+async function lookupOFF(foodName: string) {
+  const isUPC = /^\d{8,14}$/.test(foodName.trim());
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
   try {
-    const encoded = encodeURIComponent(foodName);
-    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encoded}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,nutriments,serving_size,serving_quantity`;
+    if (isUPC) {
+      const res = await fetch(`${OFF_PRODUCT_URL}/${foodName}.json`, { signal: controller.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const p = data?.product;
+      if (!p?.nutriments || !hasCompleteOFF(p.nutriments)) return null;
+      return { product: p, score: 1 };
+    }
 
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'FoodTracker/1.0 (contact@example.com)' },
-      signal: AbortSignal.timeout(5000),
-    });
-
+    const res = await fetch(
+      `${OFF_SEARCH_URL}?search_terms=${encodeURIComponent(foodName)}&search_simple=1&action=process&json=1&page_size=10`,
+      { signal: controller.signal }
+    );
     if (!res.ok) return null;
 
     const data = await res.json();
-    const products: any[] = data.products ?? [];
-    if (products.length === 0) return null;
+    const candidates = (data?.products || [])
+      .map((p: any) => ({
+        p,
+        score: compositeScore(p.product_name || p.generic_name || '', foodName),
+      }))
+      .filter((x: any) => x.score >= CACHE_THRESHOLD && hasCompleteOFF(x.p.nutriments))
+      .sort((a: any, b: any) => b.score - a.score);
 
-    // Score each result and pick best
-    let bestScore = 0;
-    let bestProduct: any = null;
-
-    for (const product of products) {
-      const candidateName = [product.product_name, product.brands].filter(Boolean).join(' ');
-      const score = compositeScore(foodName, candidateName);
-      if (score > bestScore) {
-        bestScore = score;
-        bestProduct = product;
-      }
-    }
-
-    if (bestScore < CACHE_SCORE_THRESHOLD || !bestProduct) return null;
-
-    const n = bestProduct.nutriments ?? {};
-
-    // OpenFoodFacts stores per-100g values with _100g suffix
-    const cal = n['energy-kcal_100g'] ?? n['energy_100g'] ? (n['energy_100g'] / 4.184) : 0;
-    const calories = n['energy-kcal_100g'] ?? Math.round(cal);
-
-    return {
-      food_name: bestProduct.product_name ?? foodName,
-      brand: bestProduct.brands ?? null,
-      calories_per_100g: calories ?? 0,
-      protein_per_100g: n['proteins_100g'] ?? 0,
-      fat_per_100g: n['fat_100g'] ?? 0,
-      carbs_per_100g: n['carbohydrates_100g'] ?? 0,
-      fiber_per_100g: n['fiber_100g'] ?? 0,
-      sugar_per_100g: n['sugars_100g'] ?? 0,
-      sodium_mg_per_100g: (n['sodium_100g'] ?? 0) * 1000, // OFF stores in g, we need mg
-      serving_size_label: bestProduct.serving_size ?? null,
-      serving_g: bestProduct.serving_quantity ? parseFloat(bestProduct.serving_quantity) : null,
-      serving_ml: null,
-      source: 'openfoodfacts',
-      match_confidence: bestScore,
-      match_notes: `OpenFoodFacts score: ${bestScore.toFixed(2)}`,
-      unverified: false,
-    };
+    const best = candidates[0];
+    return best ? { product: best.p, score: best.score } : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(t);
   }
 }
 
 // ============================================================================
-// GPT-4o-mini FALLBACK — context-aware: only estimate unknowns
+// 3. GPT-4o-mini FALLBACK — context-aware
+//    knownMacros: values the user already stated (per serving). These are
+//    honoured verbatim; the AI only fills in what's missing.
 // ============================================================================
 
 interface KnownMacros {
@@ -262,224 +281,140 @@ interface KnownMacros {
   sodium?: number;
 }
 
-async function queryAI(foodName: string, knownMacros: KnownMacros = {}): Promise<FoodMacros | null> {
-  try {
-    // Build a description of what's already known so the model doesn't contradict it
-    const knownLines: string[] = [];
-    if (knownMacros.calories != null) knownLines.push(`- Calories: ${knownMacros.calories} kcal (KNOWN — do not change)`);
-    if (knownMacros.protein != null) knownLines.push(`- Protein: ${knownMacros.protein} g (KNOWN — do not change)`);
-    if (knownMacros.fat != null) knownLines.push(`- Fat: ${knownMacros.fat} g (KNOWN — do not change)`);
-    if (knownMacros.carbs != null) knownLines.push(`- Carbs: ${knownMacros.carbs} g (KNOWN — do not change)`);
-    if (knownMacros.fiber != null) knownLines.push(`- Fiber: ${knownMacros.fiber} g (KNOWN — do not change)`);
-    if (knownMacros.sugar != null) knownLines.push(`- Sugar: ${knownMacros.sugar} g (KNOWN — do not change)`);
-    if (knownMacros.sodium != null) knownLines.push(`- Sodium: ${knownMacros.sodium} mg (KNOWN — do not change)`);
+async function lookupAI(foodName: string, knownMacros: KnownMacros = {}) {
+  const knownLines: string[] = [];
+  if (knownMacros.calories != null) knownLines.push(`- Calories: ${knownMacros.calories} kcal (KNOWN — do not change)`);
+  if (knownMacros.protein  != null) knownLines.push(`- Protein: ${knownMacros.protein} g (KNOWN — do not change)`);
+  if (knownMacros.fat      != null) knownLines.push(`- Fat: ${knownMacros.fat} g (KNOWN — do not change)`);
+  if (knownMacros.carbs    != null) knownLines.push(`- Carbs: ${knownMacros.carbs} g (KNOWN — do not change)`);
+  if (knownMacros.fiber    != null) knownLines.push(`- Fiber: ${knownMacros.fiber} g (KNOWN — do not change)`);
+  if (knownMacros.sugar    != null) knownLines.push(`- Sugar: ${knownMacros.sugar} g (KNOWN — do not change)`);
+  if (knownMacros.sodium   != null) knownLines.push(`- Sodium: ${knownMacros.sodium} mg (KNOWN — do not change)`);
 
-    const knownContext =
-      knownLines.length > 0
-        ? `\n\nThe user has already told me some values for this item. Use EXACTLY these values and only estimate the rest:\n${knownLines.join('\n')}`
-        : '';
+  const knownContext = knownLines.length > 0
+    ? `\n\nThe user already told me these values per serving. Use them EXACTLY and only estimate the rest:\n${knownLines.join('\n')}`
+    : '';
 
-    // Determine which serving size to estimate for — if caller knows some macros
-    // they were likely stated per serving; figure out a plausible serving_g and
-    // back-calculate per-100g values.
-    const hasKnownMacros = knownLines.length > 0;
-
-    const systemPrompt = `You are a nutrition database assistant. Return ONLY valid JSON — no markdown, no explanation.
-
-When values are marked KNOWN, reproduce them exactly. For everything else, make your best estimate based on typical nutrition data for this food.
-
-If you know a typical serving size, provide it. All macro values in your JSON must be PER 100g (or per 100ml for liquids). If the user provided per-serving values, convert them to per-100g using the serving_g you estimate.`;
-
-    const userPrompt = `Food item: "${foodName}"${knownContext}
-
-Return JSON with this exact shape:
-{
-  "food_name": string,
-  "brand": string | null,
-  "calories_per_100g": number,
-  "protein_per_100g": number,
-  "fat_per_100g": number,
-  "carbs_per_100g": number,
-  "fiber_per_100g": number,
-  "sugar_per_100g": number,
-  "sodium_mg_per_100g": number,
-  "serving_size_label": string | null,
-  "serving_g": number | null,
-  "confidence": "high" | "medium" | "low"
-}`;
-
-    const completion = await openai.chat.completions.create({
+  const completion = await withTimeout(
+    openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        {
+          role: 'system',
+          content:
+            `You estimate nutrition per 100g (or per 100ml for liquids). Return ONLY valid JSON — no markdown.\n` +
+            `When values are marked KNOWN, reproduce them exactly after converting from per-serving to per-100g using your estimated serving_g.\n\n` +
+            `Schema:\n` +
+            `{\n` +
+            `  "name": string,\n` +
+            `  "brand": string | null,\n` +
+            `  "calories_per_100g": number,\n` +
+            `  "protein_per_100g": number,\n` +
+            `  "fat_per_100g": number,\n` +
+            `  "carbs_per_100g": number,\n` +
+            `  "fiber_per_100g": number,\n` +
+            `  "sugar_per_100g": number,\n` +
+            `  "sodium_mg_per_100g": number,\n` +
+            `  "serving_g": number | null\n` +
+            `}`,
+        },
+        { role: 'user', content: `Food: "${foodName}"${knownContext}` },
       ],
-      temperature: 0,
-      max_tokens: 300,
       response_format: { type: 'json_object' },
-    });
+      temperature: 0.2,
+    }),
+    TIMEOUT_MS
+  );
 
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return null;
+  const parsed = JSON.parse(completion.choices[0].message.content || '{}');
+  const servingG: number | null = parsed.serving_g ?? null;
 
-    const parsed = JSON.parse(raw);
-
-    // If caller had known per-serving macros, the AI was asked to convert to /100g.
-    // Honour any KNOWN values directly as per-serving and convert ourselves as a
-    // safety net in case the model deviated. Use serving_g from the AI response.
-    const servingG: number | null = parsed.serving_g ?? null;
-
-    function resolvePerHundred(knownPerServing: number | undefined, aiPerHundred: number): number {
-      if (knownPerServing != null && servingG && servingG > 0) {
-        return (knownPerServing / servingG) * 100;
-      }
-      return aiPerHundred;
+  // Safety net: if caller had known per-serving values, re-derive per-100g ourselves
+  // in case the model drifted.
+  function perHundred(knownPerServing: number | undefined, aiPerHundred: number): number {
+    if (knownPerServing != null && servingG && servingG > 0) {
+      return (knownPerServing / servingG) * 100;
     }
-
-    return {
-      food_name: parsed.food_name ?? foodName,
-      brand: parsed.brand ?? null,
-      calories_per_100g: resolvePerHundred(knownMacros.calories, parsed.calories_per_100g ?? 0),
-      protein_per_100g: resolvePerHundred(knownMacros.protein, parsed.protein_per_100g ?? 0),
-      fat_per_100g: resolvePerHundred(knownMacros.fat, parsed.fat_per_100g ?? 0),
-      carbs_per_100g: resolvePerHundred(knownMacros.carbs, parsed.carbs_per_100g ?? 0),
-      fiber_per_100g: resolvePerHundred(knownMacros.fiber, parsed.fiber_per_100g ?? 0),
-      sugar_per_100g: resolvePerHundred(knownMacros.sugar, parsed.sugar_per_100g ?? 0),
-      sodium_mg_per_100g: resolvePerHundred(knownMacros.sodium, parsed.sodium_mg_per_100g ?? 0),
-      serving_size_label: parsed.serving_size_label ?? null,
-      serving_g: servingG,
-      serving_ml: null,
-      source: 'ai',
-      match_confidence: parsed.confidence === 'high' ? 0.9 : parsed.confidence === 'medium' ? 0.7 : 0.5,
-      match_notes: `AI estimate (confidence: ${parsed.confidence})${hasKnownMacros ? ', user macros honoured' : ''}`,
-      unverified: true,
-    };
-  } catch (err) {
-    console.error('[get-food-macros] AI fallback error:', err);
-    return null;
+    return aiPerHundred;
   }
+
+  const food: FoodMacrosPer100g = {
+    name: String(parsed.name || foodName),
+    brand: parsed.brand ?? null,
+    calories_per_100g: perHundred(knownMacros.calories, Number(parsed.calories_per_100g || 0)),
+    protein_per_100g:  perHundred(knownMacros.protein,  Number(parsed.protein_per_100g  || 0)),
+    fat_per_100g:      perHundred(knownMacros.fat,      Number(parsed.fat_per_100g       || 0)),
+    carbs_per_100g:    perHundred(knownMacros.carbs,    Number(parsed.carbs_per_100g     || 0)),
+    fiber_per_100g:    perHundred(knownMacros.fiber,    Number(parsed.fiber_per_100g     || 0)),
+    sugar_per_100g:    perHundred(knownMacros.sugar,    Number(parsed.sugar_per_100g     || 0)),
+    sodium_mg_per_100g: perHundred(knownMacros.sodium, Number(parsed.sodium_mg_per_100g || 0)),
+    serving_size_label: null,
+    serving_g: servingG,
+    serving_ml: null,
+  };
+
+  return {
+    source: 'ai' as const,
+    food,
+    unverified: true,
+    match_description: 'AI estimate (unverified)',
+    match_score: 0,
+  };
 }
 
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { foodName, knownMacros } = body as {
-      foodName: string;
-      knownMacros?: KnownMacros;
-    };
+    const body = await req.json();
+    const foodName = String(body?.foodName || '').trim();
+    const knownMacros: KnownMacros = body?.knownMacros ?? {};
 
-    if (!foodName || typeof foodName !== 'string') {
+    if (!foodName) {
       return NextResponse.json({ error: 'foodName is required' }, { status: 400 });
     }
 
-    const name = foodName.trim();
-
-    // 1. Supabase cache — two-attempt strategy
-    const cached = await queryCache(name);
-    if (cached) {
-      const cacheCandidate: CacheCandidate = {
-        normalized_name: normalizeName(cached.food_name),
-        food_name: cached.food_name,
-        brand: cached.brand,
-        calories_per_100g: cached.calories_per_100g,
-        protein_per_100g: cached.protein_per_100g,
-        fat_per_100g: cached.fat_per_100g,
-        carbs_per_100g: cached.carbs_per_100g,
-        fiber_per_100g: cached.fiber_per_100g,
-        sugar_per_100g: cached.sugar_per_100g,
-        sodium_mg_per_100g: cached.sodium_mg_per_100g,
-        serving_size_label: cached.serving_size_label,
-        serving_g: cached.serving_g,
-        serving_ml: cached.serving_ml,
-        source: 'cache',
-        match_confidence: cached.match_confidence,
-        match_notes: cached.match_notes,
-        unverified: cached.unverified,
-      };
-
-      return NextResponse.json({
-        food: cached,
-        source: 'cache',
-        cache_hit: true,        // caller should fire increment_times_used RPC
-        cache_candidate: null,  // no write needed; already in DB
-      });
-    }
+    // 1. Supabase cache
+    const cached = await lookupCache(foodName);
+    if (cached) return NextResponse.json(cached);
 
     // 2. OpenFoodFacts
-    const offResult = await queryOpenFoodFacts(name);
-    if (offResult) {
-      const cacheCandidate: CacheCandidate = {
-        normalized_name: normalizeName(offResult.food_name),
-        food_name: offResult.food_name,
-        brand: offResult.brand,
-        calories_per_100g: offResult.calories_per_100g,
-        protein_per_100g: offResult.protein_per_100g,
-        fat_per_100g: offResult.fat_per_100g,
-        carbs_per_100g: offResult.carbs_per_100g,
-        fiber_per_100g: offResult.fiber_per_100g,
-        sugar_per_100g: offResult.sugar_per_100g,
-        sodium_mg_per_100g: offResult.sodium_mg_per_100g,
-        serving_size_label: offResult.serving_size_label,
-        serving_g: offResult.serving_g,
-        serving_ml: offResult.serving_ml,
-        source: 'openfoodfacts',
-        match_confidence: offResult.match_confidence,
-        match_notes: offResult.match_notes,
+    const off = await withTimeout(lookupOFF(foodName), TIMEOUT_MS);
+    if (off?.product) {
+      const food = offToFood(off.product);
+      const cache_candidate = makeCacheCandidate(
+        foodName, food, 'off', off.score,
+        off.product.product_name || off.product.generic_name || null,
+        false
+      );
+      return NextResponse.json({
+        source: 'off' as const,
+        food,
+        match_description: cache_candidate.match_notes,
+        match_score: off.score,
         unverified: false,
-      };
-
-      return NextResponse.json({
-        food: offResult,
-        source: 'openfoodfacts',
+        cache_candidate,
         cache_hit: false,
-        cache_candidate: cacheCandidate,
       });
     }
 
-    // 3. GPT-4o-mini fallback — pass known macros for context-aware estimation
-    const aiResult = await queryAI(name, knownMacros ?? {});
-    if (aiResult) {
-      const cacheCandidate: CacheCandidate = {
-        normalized_name: normalizeName(aiResult.food_name),
-        food_name: aiResult.food_name,
-        brand: aiResult.brand,
-        calories_per_100g: aiResult.calories_per_100g,
-        protein_per_100g: aiResult.protein_per_100g,
-        fat_per_100g: aiResult.fat_per_100g,
-        carbs_per_100g: aiResult.carbs_per_100g,
-        fiber_per_100g: aiResult.fiber_per_100g,
-        sugar_per_100g: aiResult.sugar_per_100g,
-        sodium_mg_per_100g: aiResult.sodium_mg_per_100g,
-        serving_size_label: aiResult.serving_size_label,
-        serving_g: aiResult.serving_g,
-        serving_ml: aiResult.serving_ml,
-        source: 'ai',
-        match_confidence: aiResult.match_confidence,
-        match_notes: aiResult.match_notes,
-        unverified: true,
-      };
-
-      return NextResponse.json({
-        food: aiResult,
-        source: 'ai',
-        cache_hit: false,
-        cache_candidate: cacheCandidate,
-      });
-    }
-
-    // All sources failed
-    return NextResponse.json(
-      { error: `No nutrition data found for "${name}"` },
-      { status: 404 }
+    // 3. AI fallback — pass known macros so it doesn't contradict the user
+    const ai = await lookupAI(foodName, knownMacros);
+    const cache_candidate = makeCacheCandidate(
+      foodName, ai.food, 'ai', 0.3, 'AI fallback estimate', true
     );
-  } catch (error) {
-    console.error('[get-food-macros] Error:', error);
+    return NextResponse.json({
+      ...ai,
+      cache_candidate,
+      cache_hit: false,
+    });
+
+  } catch (e: any) {
+    console.error('[get-food-macros] error:', e);
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to get nutritional information', details: String(e?.message || e) },
       { status: 500 }
     );
   }

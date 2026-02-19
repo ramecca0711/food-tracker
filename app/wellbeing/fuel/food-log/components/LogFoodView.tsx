@@ -7,27 +7,27 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
-
+  
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
-
+  
   const [foodInput, setFoodInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [parsedData, setParsedData] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editingMeals, setEditingMeals] = useState<any[]>([]);
   const [expandedItems, setExpandedItems] = useState<Map<string, Set<number>>>(new Map());
-
+  
   const [mealNotes, setMealNotes] = useState<Map<number, string>>(new Map());
   const [mealEatingOut, setMealEatingOut] = useState<Map<number, boolean>>(new Map());
-
+  
   const [savedMeals, setSavedMeals] = useState<any[]>([]);
   const [isLoadingSavedMeals, setIsLoadingSavedMeals] = useState(true);
   const [editingSavedMeal, setEditingSavedMeal] = useState<string | null>(null);
   const [editingSavedMealData, setEditingSavedMealData] = useState<any>(null);
   const [showSavedMeals, setShowSavedMeals] = useState(false);
-
+  
   const [showSaveMealModal, setShowSaveMealModal] = useState(false);
   const [mealToSave, setMealToSave] = useState<any>(null);
   const [saveMealName, setSaveMealName] = useState('');
@@ -36,7 +36,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // LOAD SAVED MEALS
   // ============================================================================
-
+  
   useEffect(() => {
     loadSavedMeals();
   }, [userId]);
@@ -48,28 +48,32 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     }
 
     setIsLoadingSavedMeals(true);
-
-    const { data } = await supabase
+    
+    const { data, error } = await supabase
       .from('saved_meals')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (data) setSavedMeals(data);
+    if (data) {
+      setSavedMeals(data);
+    }
+    
     setIsLoadingSavedMeals(false);
   };
 
   // ============================================================================
   // FOOD PARSING
   // ============================================================================
-
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!foodInput.trim()) return;
-
+    
     setIsLoading(true);
     setParsedData(null);
-
+    
     try {
       const response = await fetch('/api/parse-food', {
         method: 'POST',
@@ -83,16 +87,15 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       setParsedData(data);
       setEditingMeals(data.meals || []);
       setExpandedItems(new Map());
-
-      const notesMap = new Map<number, string>();
-      const eatingOutMap = new Map<number, boolean>();
-      (data.meals || []).forEach((meal: any, idx: number) => {
-        if (meal?.notes) notesMap.set(idx, meal.notes);
-        if (typeof meal?.eating_out === 'boolean') eatingOutMap.set(idx, meal.eating_out);
+      // Pre-fill notes and eating_out from parse result
+      const newNotes = new Map<number, string>();
+      const newEatingOut = new Map<number, boolean>();
+      (data.meals || []).forEach((meal: any, i: number) => {
+        if (meal.notes) newNotes.set(i, meal.notes);
+        if (meal.eating_out) newEatingOut.set(i, true);
       });
-      setMealNotes(notesMap);
-      setMealEatingOut(eatingOutMap);
-
+      setMealNotes(newNotes);
+      setMealEatingOut(newEatingOut);
       console.log('Parsed:', data);
     } catch (error) {
       console.error('Error:', error);
@@ -105,20 +108,22 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // MEAL EDITING
   // ============================================================================
-
+  
   const toggleExpand = (mealIndex: number, itemIndex: number) => {
     const newExpanded = new Map(expandedItems);
     const key = `${mealIndex}`;
-
-    if (!newExpanded.has(key)) newExpanded.set(key, new Set());
-
+    
+    if (!newExpanded.has(key)) {
+      newExpanded.set(key, new Set());
+    }
+    
     const mealExpanded = newExpanded.get(key)!;
     if (mealExpanded.has(itemIndex)) {
       mealExpanded.delete(itemIndex);
     } else {
       mealExpanded.add(itemIndex);
     }
-
+    
     setExpandedItems(newExpanded);
   };
 
@@ -130,28 +135,28 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   const handleItemEdit = (mealIndex: number, itemIndex: number, field: string, value: any) => {
     const updated = [...editingMeals];
-
+    
     if (field === 'quantity') {
-      // Scale all macros proportionally when the user changes quantity
-      const oldQty = parseFloat(updated[mealIndex].items[itemIndex].quantity) || 1;
-      const newQty = parseFloat(value) || 1;
-      const ratio = newQty / oldQty;
+      const oldQuantity = parseFloat(updated[mealIndex].items[itemIndex].quantity) || 1;
+      const newQuantity = parseFloat(value) || 1;
+      const ratio = newQuantity / oldQuantity;
+      
       const item = updated[mealIndex].items[itemIndex];
       updated[mealIndex].items[itemIndex] = {
         ...item,
         quantity: value,
         calories: Math.round(item.calories * ratio),
-        protein:  Math.round(item.protein  * ratio * 10) / 10,
-        fat:      Math.round(item.fat      * ratio * 10) / 10,
-        carbs:    Math.round(item.carbs    * ratio * 10) / 10,
-        fiber:    Math.round(item.fiber    * ratio * 10) / 10,
-        sugar:    Math.round(item.sugar    * ratio * 10) / 10,
-        sodium:   Math.round(item.sodium   * ratio),
+        protein: Math.round(item.protein * ratio * 10) / 10,
+        fat: Math.round(item.fat * ratio * 10) / 10,
+        carbs: Math.round(item.carbs * ratio * 10) / 10,
+        fiber: Math.round(item.fiber * ratio * 10) / 10,
+        sugar: Math.round(item.sugar * ratio * 10) / 10,
+        sodium: Math.round(item.sodium * ratio),
       };
     } else {
       updated[mealIndex].items[itemIndex] = {
         ...updated[mealIndex].items[itemIndex],
-        [field]: value,
+        [field]: value
       };
     }
     setEditingMeals(updated);
@@ -172,14 +177,13 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // SAVE TO DATABASE
   // ============================================================================
-
+  
   const handleConfirm = async () => {
     if (!editingMeals.length || !userId) return;
 
     setIsSaving(true);
 
     try {
-      // ── 1. Build food_items rows ────────────────────────────────────────────
       const allItemsToInsert = [];
       const selectedDateTime = new Date(selectedDate + 'T12:00:00');
 
@@ -188,23 +192,23 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         const mealGroupId = crypto.randomUUID();
 
         const mealItems = (meal.items || []).map((item: any) => ({
-          user_id:                userId,
-          food_name:              item.food_name,
-          quantity:               item.quantity,
-          calories:               parseInt(item.calories)   || 0,
-          protein:                parseFloat(item.protein)  || 0,
-          fat:                    parseFloat(item.fat)      || 0,
-          carbs:                  parseFloat(item.carbs)    || 0,
-          fiber:                  parseFloat(item.fiber)    || 0,
-          sugar:                  parseFloat(item.sugar)    || 0,
-          sodium:                 parseInt(item.sodium)     || 0,
-          categories:             item.categories             || [],
+          user_id: userId,
+          food_name: item.food_name,
+          quantity: item.quantity,
+          calories: parseInt(item.calories) || 0,
+          protein: parseFloat(item.protein) || 0,
+          fat: parseFloat(item.fat) || 0,
+          carbs: parseFloat(item.carbs) || 0,
+          fiber: parseFloat(item.fiber) || 0,
+          sugar: parseFloat(item.sugar) || 0,
+          sodium: parseInt(item.sodium) || 0,
+          categories: item.categories || [],
           whole_food_ingredients: item.whole_food_ingredients || [],
-          meal_type:              meal.meal_type,
-          meal_group_id:          mealGroupId,
-          notes:                  mealNotes.get(i)           || null,
-          eating_out:             mealEatingOut.get(i)       || false,
-          logged_at:              selectedDateTime.toISOString(),
+          meal_type: meal.meal_type,
+          meal_group_id: mealGroupId,
+          notes: mealNotes.get(i) || null,
+          eating_out: mealEatingOut.get(i) || false,
+          logged_at: selectedDateTime.toISOString(),
         }));
 
         allItemsToInsert.push(...mealItems);
@@ -277,9 +281,9 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // SAVE MEAL FOR REUSE
   // ============================================================================
-
+  
   const openSaveMealModal = (meal: any, mealIndex: number) => {
-    setMealToSave({ ...meal, mealIndex });
+    setMealToSave({...meal, mealIndex});
     setSaveMealName('');
     setSaveMealNotes(mealNotes.get(mealIndex) || '');
     setShowSaveMealModal(true);
@@ -289,13 +293,15 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     if (!userId || !mealToSave || !saveMealName.trim()) return;
 
     try {
-      const { error } = await supabase.from('saved_meals').insert({
-        user_id:   userId,
-        meal_name: saveMealName,
-        meal_type: mealToSave.meal_type,
-        items:     mealToSave.items,
-        notes:     saveMealNotes || null,
-      });
+      const { error } = await supabase
+        .from('saved_meals')
+        .insert({
+          user_id: userId,
+          meal_name: saveMealName,
+          meal_type: mealToSave.meal_type,
+          items: mealToSave.items,
+          notes: saveMealNotes || null,
+        });
 
       if (error) throw error;
 
@@ -311,14 +317,14 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // EDIT SAVED MEAL
   // ============================================================================
-
+  
   const startEditSavedMeal = (meal: any) => {
     setEditingSavedMeal(meal.id);
     setEditingSavedMealData({
       meal_name: meal.meal_name,
       meal_type: meal.meal_type,
-      items:     JSON.parse(JSON.stringify(meal.items)),
-      notes:     meal.notes || '',
+      items: JSON.parse(JSON.stringify(meal.items)),
+      notes: meal.notes || '',
     });
   };
 
@@ -331,8 +337,8 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         .update({
           meal_name: editingSavedMealData.meal_name,
           meal_type: editingSavedMealData.meal_type,
-          items:     editingSavedMealData.items,
-          notes:     editingSavedMealData.notes,
+          items: editingSavedMealData.items,
+          notes: editingSavedMealData.notes,
         })
         .eq('id', mealId)
         .eq('user_id', userId);
@@ -355,47 +361,57 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   const updateEditingSavedMealItem = (itemIndex: number, field: string, value: any) => {
     if (!editingSavedMealData) return;
-    const updated = { ...editingSavedMealData };
-    updated.items[itemIndex] = { ...updated.items[itemIndex], [field]: value };
+    
+    const updated = {...editingSavedMealData};
+    updated.items[itemIndex] = {
+      ...updated.items[itemIndex],
+      [field]: value
+    };
     setEditingSavedMealData(updated);
   };
 
   // ============================================================================
   // ADD SAVED MEAL
   // ============================================================================
-
+  
   const addSavedMeal = async (savedMeal: any) => {
     if (!userId) return;
 
     try {
       const mealGroupId = crypto.randomUUID();
       const selectedDateTime = new Date(selectedDate + 'T12:00:00');
-
+      
       const itemsToInsert = savedMeal.items.map((item: any) => ({
-        user_id:                userId,
-        food_name:              item.food_name,
-        quantity:               item.quantity,
-        calories:               parseInt(item.calories)   || 0,
-        protein:                parseFloat(item.protein)  || 0,
-        fat:                    parseFloat(item.fat)      || 0,
-        carbs:                  parseFloat(item.carbs)    || 0,
-        fiber:                  parseFloat(item.fiber)    || 0,
-        sugar:                  parseFloat(item.sugar)    || 0,
-        sodium:                 parseInt(item.sodium)     || 0,
-        categories:             item.categories             || [],
+        user_id: userId,
+        food_name: item.food_name,
+        quantity: item.quantity,
+        calories: parseInt(item.calories) || 0,
+        protein: parseFloat(item.protein) || 0,
+        fat: parseFloat(item.fat) || 0,
+        carbs: parseFloat(item.carbs) || 0,
+        fiber: parseFloat(item.fiber) || 0,
+        sugar: parseFloat(item.sugar) || 0,
+        sodium: parseInt(item.sodium) || 0,
+        categories: item.categories || [],
         whole_food_ingredients: item.whole_food_ingredients || [],
-        meal_type:              savedMeal.meal_type,
-        meal_group_id:          mealGroupId,
-        notes:                  savedMeal.notes             || null,
-        eating_out:             false,
-        logged_at:              selectedDateTime.toISOString(),
+        meal_type: savedMeal.meal_type,
+        meal_group_id: mealGroupId,
+        notes: savedMeal.notes || null,
+        eating_out: false,
+        logged_at: selectedDateTime.toISOString(),
       }));
 
-      const { error } = await supabase.from('food_items').insert(itemsToInsert);
+      const { error } = await supabase
+        .from('food_items')
+        .insert(itemsToInsert);
+
       if (error) throw error;
 
       alert(`✅ Added "${savedMeal.meal_name}" to ${selectedDate}!`);
-      setTimeout(() => window.dispatchEvent(new Event('foodLogged')), 100);
+      
+      setTimeout(() => {
+        window.dispatchEvent(new Event('foodLogged'));
+      }, 100);
     } catch (error) {
       console.error('Error adding saved meal:', error);
       alert('Failed to add meal');
@@ -405,7 +421,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // DELETE SAVED MEAL
   // ============================================================================
-
+  
   const deleteSavedMeal = async (mealId: string) => {
     if (!confirm('Delete this saved meal?')) return;
 
@@ -417,6 +433,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         .eq('user_id', userId);
 
       if (error) throw error;
+
       loadSavedMeals();
     } catch (error) {
       console.error('Error deleting meal:', error);
@@ -427,19 +444,24 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
-
+  
   const formatMealType = (type: string) => {
-    const emoji = { breakfast: '🌅', lunch: '🌞', dinner: '🌙', snack: '🍎' }[type] || '🍽️';
+    const emoji = {
+      breakfast: '🌅',
+      lunch: '🌞',
+      dinner: '🌙',
+      snack: '🍎'
+    }[type] || '🍽️';
     return `${emoji} ${type.charAt(0).toUpperCase() + type.slice(1)}`;
   };
 
   // ============================================================================
   // RENDER
   // ============================================================================
-
+  
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-
+      
       {/* DATE SELECTOR */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
         <label className="block text-sm font-medium text-blue-900 mb-2">
@@ -484,28 +506,7 @@ Examples:
             rows={6}
             disabled={isLoading || !!parsedData}
           />
-
-          <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-            <input
-              id="label-photo-input"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                console.log('Label photo selected:', file.name);
-              }}
-            />
-            <label
-              htmlFor="label-photo-input"
-              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 hover:bg-gray-50"
-            >
-              Add label photo
-            </label>
-            <span className="text-xs text-gray-500">Optional</span>
-          </div>
-
+          
           <button
             type="submit"
             disabled={isLoading || !foodInput.trim() || !!parsedData}
@@ -518,7 +519,7 @@ Examples:
         {/* PARSED MEALS */}
         {parsedData && editingMeals.length > 0 && (
           <div className="mt-8 pt-8 border-t border-gray-200">
-
+            
             <div className="mb-6 p-4 bg-gray-50 rounded-xl">
               <div className="text-sm font-medium text-gray-700 mb-1">You entered:</div>
               <div className="text-gray-900">{foodInput}</div>
@@ -529,7 +530,7 @@ Examples:
                 Detected {editingMeals.length} {editingMeals.length === 1 ? 'meal' : 'meals'}
               </div>
               <div className="text-sm text-blue-700">
-                {editingMeals.map((meal) => formatMealType(meal.meal_type)).join(' · ')}
+                {editingMeals.map((meal, idx) => formatMealType(meal.meal_type)).join(' · ')}
               </div>
             </div>
 
@@ -538,9 +539,9 @@ Examples:
                 const mealTotals = (meal.items || []).reduce(
                   (acc: any, item: any) => ({
                     calories: acc.calories + (parseInt(item.calories) || 0),
-                    protein:  acc.protein  + (parseFloat(item.protein) || 0),
-                    fat:      acc.fat      + (parseFloat(item.fat) || 0),
-                    carbs:    acc.carbs    + (parseFloat(item.carbs) || 0),
+                    protein: acc.protein + (parseFloat(item.protein) || 0),
+                    fat: acc.fat + (parseFloat(item.fat) || 0),
+                    carbs: acc.carbs + (parseFloat(item.carbs) || 0),
                   }),
                   { calories: 0, protein: 0, fat: 0, carbs: 0 }
                 );
@@ -558,13 +559,13 @@ Examples:
                               {mealTotals.calories} cal
                             </div>
                             <div className="text-xs text-gray-500 mt-0.5">
-                              P: {mealTotals.protein.toFixed(0)}g ·
-                              F: {mealTotals.fat.toFixed(0)}g ·
+                              P: {mealTotals.protein.toFixed(0)}g · 
+                              F: {mealTotals.fat.toFixed(0)}g · 
                               C: {mealTotals.carbs.toFixed(0)}g
                             </div>
                           </div>
                         </div>
-
+                        
                         <button
                           onClick={() => openSaveMealModal(meal, mealIndex)}
                           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
@@ -622,7 +623,7 @@ Examples:
                     <div className="p-4 space-y-2 bg-white">
                       {(meal.items || []).map((item: any, itemIndex: number) => {
                         const isExpanded = expandedItems.get(`${mealIndex}`)?.has(itemIndex);
-
+                        
                         return (
                           <div key={itemIndex} className="border border-gray-200 rounded-lg overflow-hidden">
                             <button
@@ -633,27 +634,17 @@ Examples:
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900">{item.food_name}</div>
                                 <div className="text-sm text-gray-600 mt-0.5">
-                                  {item.quantity} · {item.calories} cal ·
+                                  {item.quantity} · {item.calories} cal · 
                                   P: {item.protein}g · F: {item.fat}g · C: {item.carbs}g
                                 </div>
-                                {item.source && (
-                                  <div className="mt-1 text-[11px] text-gray-500">
-                                    Source: <span className="font-medium">{item.source}</span>
-                                    {item.unverified && (
-                                      <span className="ml-1 text-amber-600 font-medium">· unverified</span>
-                                    )}
-                                  </div>
-                                )}
-                                {item.match_description && typeof item.match_score === 'number' && (
-                                  <div className="mt-1 text-[11px] text-gray-500">
-                                    Matched: <span className="font-medium">{item.match_description}</span> ·
-                                    Score: {(item.match_score * 100).toFixed(0)}%
-                                  </div>
-                                )}
                               </div>
                               <svg
-                                className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                className={`w-5 h-5 text-gray-400 transition-transform ${
+                                  isExpanded ? 'rotate-180' : ''
+                                }`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
                               >
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                               </svg>
@@ -685,20 +676,45 @@ Examples:
                                 <div>
                                   <label className="text-xs text-gray-600 mb-1.5 block font-medium">Macronutrients</label>
                                   <div className="grid grid-cols-4 gap-2">
-                                    {(['calories', 'protein', 'fat', 'carbs'] as const).map((field) => (
-                                      <div key={field}>
-                                        <label className="text-xs text-gray-500 block mb-1">
-                                          {field.charAt(0).toUpperCase() + field.slice(1)}{field !== 'calories' ? ' (g)' : ''}
-                                        </label>
-                                        <input
-                                          type="number"
-                                          step={field === 'calories' ? '1' : '0.1'}
-                                          value={item[field]}
-                                          onChange={(e) => handleItemEdit(mealIndex, itemIndex, field, e.target.value)}
-                                          className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
-                                        />
-                                      </div>
-                                    ))}
+                                    <div>
+                                      <label className="text-xs text-gray-500 block mb-1">Calories</label>
+                                      <input
+                                        type="number"
+                                        value={item.calories}
+                                        onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'calories', e.target.value)}
+                                        className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-gray-500 block mb-1">Protein (g)</label>
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        value={item.protein}
+                                        onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'protein', e.target.value)}
+                                        className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-gray-500 block mb-1">Fat (g)</label>
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        value={item.fat}
+                                        onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'fat', e.target.value)}
+                                        className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-gray-500 block mb-1">Carbs (g)</label>
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        value={item.carbs}
+                                        onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'carbs', e.target.value)}
+                                        className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
+                                      />
+                                    </div>
                                   </div>
                                 </div>
 
@@ -708,7 +724,9 @@ Examples:
                                     <div>
                                       <label className="text-xs text-gray-500 block mb-1">Fiber (g)</label>
                                       <input
-                                        type="number" step="0.1" value={item.fiber}
+                                        type="number"
+                                        step="0.1"
+                                        value={item.fiber}
                                         onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'fiber', e.target.value)}
                                         className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
                                       />
@@ -716,7 +734,9 @@ Examples:
                                     <div>
                                       <label className="text-xs text-gray-500 block mb-1">Sugar (g)</label>
                                       <input
-                                        type="number" step="0.1" value={item.sugar}
+                                        type="number"
+                                        step="0.1"
+                                        value={item.sugar}
                                         onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'sugar', e.target.value)}
                                         className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
                                       />
@@ -724,7 +744,8 @@ Examples:
                                     <div>
                                       <label className="text-xs text-gray-500 block mb-1">Sodium (mg)</label>
                                       <input
-                                        type="number" value={item.sodium}
+                                        type="number"
+                                        value={item.sodium}
                                         onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'sodium', e.target.value)}
                                         className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
                                       />
@@ -735,7 +756,10 @@ Examples:
                                 {item.categories && item.categories.length > 0 && (
                                   <div className="flex gap-2 flex-wrap">
                                     {item.categories.map((cat: string, i: number) => (
-                                      <span key={i} className="px-2.5 py-1 bg-white border border-gray-200 text-gray-700 text-xs rounded-md font-medium">
+                                      <span
+                                        key={i}
+                                        className="px-2.5 py-1 bg-white border border-gray-200 text-gray-700 text-xs rounded-md font-medium"
+                                      >
                                         {cat}
                                       </span>
                                     ))}
@@ -755,7 +779,7 @@ Examples:
             <div className="mt-6 bg-gray-900 text-white rounded-xl p-5">
               <div className="text-sm font-medium text-gray-300 mb-2">Total for All Meals</div>
               <div className="text-3xl font-bold mb-3">
-                {editingMeals.reduce((sum, meal) =>
+                {editingMeals.reduce((sum, meal) => 
                   sum + (meal.items || []).reduce((s: number, item: any) => s + (parseInt(item.calories) || 0), 0), 0
                 )} cal
               </div>
@@ -763,7 +787,7 @@ Examples:
                 <div>
                   <div className="text-gray-300">Protein</div>
                   <div className="text-lg font-semibold">
-                    {editingMeals.reduce((sum, meal) =>
+                    {editingMeals.reduce((sum, meal) => 
                       sum + (meal.items || []).reduce((s: number, item: any) => s + (parseFloat(item.protein) || 0), 0), 0
                     ).toFixed(1)}g
                   </div>
@@ -771,7 +795,7 @@ Examples:
                 <div>
                   <div className="text-gray-300">Fat</div>
                   <div className="text-lg font-semibold">
-                    {editingMeals.reduce((sum, meal) =>
+                    {editingMeals.reduce((sum, meal) => 
                       sum + (meal.items || []).reduce((s: number, item: any) => s + (parseFloat(item.fat) || 0), 0), 0
                     ).toFixed(1)}g
                   </div>
@@ -779,7 +803,7 @@ Examples:
                 <div>
                   <div className="text-gray-300">Carbs</div>
                   <div className="text-lg font-semibold">
-                    {editingMeals.reduce((sum, meal) =>
+                    {editingMeals.reduce((sum, meal) => 
                       sum + (meal.items || []).reduce((s: number, item: any) => s + (parseFloat(item.carbs) || 0), 0), 0
                     ).toFixed(1)}g
                   </div>
@@ -807,7 +831,7 @@ Examples:
         )}
       </div>
 
-      {/* SAVED MEALS SECTION */}
+      {/* SAVED MEALS SECTION - COLLAPSED */}
       <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-2xl overflow-hidden">
         <button
           onClick={() => setShowSavedMeals(!showSavedMeals)}
@@ -816,13 +840,17 @@ Examples:
           <div>
             <h2 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
               Saved Meals
-              <span className="text-sm font-normal text-blue-600">({savedMeals.length})</span>
+              <span className="text-sm font-normal text-blue-600">
+                ({savedMeals.length})
+              </span>
             </h2>
             <p className="text-sm text-blue-700 mt-1">Quick access to frequently eaten meals</p>
           </div>
           <svg
             className={`w-6 h-6 text-blue-700 transition-transform ${showSavedMeals ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
@@ -830,6 +858,7 @@ Examples:
 
         {showSavedMeals && (
           <div className="px-5 sm:px-6 pb-5 sm:pb-6 border-t border-blue-200">
+            {/* Instructions inside collapsed section */}
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4 mb-4">
               <h3 className="text-sm font-semibold text-yellow-900 mb-2">How to use saved meals:</h3>
               <ul className="text-sm text-yellow-800 space-y-1">
@@ -845,19 +874,26 @@ Examples:
             ) : savedMeals.length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-blue-400 mb-2 text-4xl">📖</div>
-                <div className="text-sm font-medium text-blue-900 mb-1">No saved meals yet</div>
-                <div className="text-xs text-blue-600">Save meals you eat often for quick logging later</div>
+                <div className="text-sm font-medium text-blue-900 mb-1">
+                  No saved meals yet
+                </div>
+                <div className="text-xs text-blue-600">
+                  Save meals you eat often for quick logging later
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
                 {savedMeals.map((meal) => {
                   const isEditing = editingSavedMeal === meal.id;
-                  const totalCals = meal.items.reduce(
-                    (sum: number, item: any) => sum + (parseInt(item.calories) || 0), 0
+                  const totalCals = meal.items.reduce((sum: number, item: any) => 
+                    sum + (parseInt(item.calories) || 0), 0
                   );
-
+                  
                   return (
-                    <div key={meal.id} className="bg-white p-4 rounded-xl border border-blue-200">
+                    <div 
+                      key={meal.id} 
+                      className="bg-white p-4 rounded-xl border border-blue-200"
+                    >
                       {isEditing ? (
                         <div className="space-y-4">
                           <div>
@@ -865,17 +901,17 @@ Examples:
                             <input
                               type="text"
                               value={editingSavedMealData.meal_name}
-                              onChange={(e) => setEditingSavedMealData({ ...editingSavedMealData, meal_name: e.target.value })}
+                              onChange={(e) => setEditingSavedMealData({...editingSavedMealData, meal_name: e.target.value})}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
-
+                          
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
                             <input
                               type="text"
                               value={editingSavedMealData.notes}
-                              onChange={(e) => setEditingSavedMealData({ ...editingSavedMealData, notes: e.target.value })}
+                              onChange={(e) => setEditingSavedMealData({...editingSavedMealData, notes: e.target.value})}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                               placeholder="Restaurant, location, etc."
                             />
@@ -913,7 +949,8 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Calories</label>
                                         <input
-                                          type="number" value={item.calories}
+                                          type="number"
+                                          value={item.calories}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'calories', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -921,7 +958,9 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Protein (g)</label>
                                         <input
-                                          type="number" step="0.1" value={item.protein}
+                                          type="number"
+                                          step="0.1"
+                                          value={item.protein}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'protein', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -929,7 +968,9 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Fat (g)</label>
                                         <input
-                                          type="number" step="0.1" value={item.fat}
+                                          type="number"
+                                          step="0.1"
+                                          value={item.fat}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'fat', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -937,7 +978,9 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Carbs (g)</label>
                                         <input
-                                          type="number" step="0.1" value={item.carbs}
+                                          type="number"
+                                          step="0.1"
+                                          value={item.carbs}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'carbs', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -951,7 +994,9 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Fiber (g)</label>
                                         <input
-                                          type="number" step="0.1" value={item.fiber || 0}
+                                          type="number"
+                                          step="0.1"
+                                          value={item.fiber || 0}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'fiber', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -959,7 +1004,9 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Sugar (g)</label>
                                         <input
-                                          type="number" step="0.1" value={item.sugar || 0}
+                                          type="number"
+                                          step="0.1"
+                                          value={item.sugar || 0}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'sugar', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -967,7 +1014,8 @@ Examples:
                                       <div>
                                         <label className="block text-xs text-gray-500 mb-1">Sodium (mg)</label>
                                         <input
-                                          type="number" value={item.sodium || 0}
+                                          type="number"
+                                          value={item.sodium || 0}
                                           onChange={(e) => updateEditingSavedMealItem(idx, 'sodium', e.target.value)}
                                           className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded text-center focus:ring-2 focus:ring-blue-500"
                                         />
@@ -1046,11 +1094,13 @@ Examples:
       {showSaveMealModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Save This Meal</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Save This Meal
+            </h3>
             <p className="text-sm text-gray-600 mb-6">
               Give this meal a name so you can quickly add it again in the future.
             </p>
-
+            
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Meal Name</label>
@@ -1075,7 +1125,7 @@ Examples:
                 />
               </div>
             </div>
-
+            
             <div className="flex gap-3 mt-6">
               <button
                 onClick={saveMealForLater}
