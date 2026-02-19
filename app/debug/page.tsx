@@ -118,7 +118,7 @@ export default function DebugPage() {
                 Backfill Food Macros
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-                Update all your food items with accurate macros from the master database and USDA. 
+                Update all your food items with accurate macros from the master database, OpenFoodFacts, and AI estimates.
                 This will improve accuracy and consistency across your food log.
             </p>
             
