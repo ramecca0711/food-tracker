@@ -70,7 +70,7 @@ function compositeScore(a: string, b: string): number {
   return Math.max(jaccard(A, B), containment(A, B));
 }
 
-const CACHE_THRESHOLD = 0.60;
+const CACHE_THRESHOLD = 0.55; // Jaccard alone at 0.55 or containment-based; keeps branded items
 
 // ============================================================================
 // HELPERS
@@ -84,15 +84,14 @@ function withTimeout<T>(p: Promise<T>, ms = TIMEOUT_MS): Promise<T> {
   });
 }
 
+// Only require the four core macros — fiber/sugar/sodium are often missing in OFF
+// and we'd rather get partial data than fall through to an expensive AI call.
 function hasCompleteOFF(n: any): boolean {
   return (
     n?.['energy-kcal_100g'] != null &&
     n?.['proteins_100g'] != null &&
     n?.['fat_100g'] != null &&
-    n?.['carbohydrates_100g'] != null &&
-    n?.['sugars_100g'] != null &&
-    n?.['fiber_100g'] != null &&
-    n?.['sodium_100g'] != null
+    n?.['carbohydrates_100g'] != null
   );
 }
 
@@ -251,7 +250,8 @@ async function lookupOFF(foodName: string) {
     const candidates = (data?.products || [])
       .map((p: any) => ({
         p,
-        score: compositeScore(p.product_name || p.generic_name || '', foodName),
+        // compositeScore(query, candidate) so containment measures query-in-candidate
+        score: compositeScore(foodName, p.product_name || p.generic_name || ''),
       }))
       .filter((x: any) => x.score >= CACHE_THRESHOLD && hasCompleteOFF(x.p.nutriments))
       .sort((a: any, b: any) => b.score - a.score);

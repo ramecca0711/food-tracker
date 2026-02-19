@@ -78,9 +78,9 @@ export async function POST(request: Request) {
 
         const macroData = await macroResponse.json();
         
-        // Track source
+        // Track source ('off' is the value returned by get-food-macros for OpenFoodFacts)
         if (macroData.source === 'cache') cacheHits++;
-        else if (macroData.source === 'openfoodfacts') offHits++;
+        else if (macroData.source === 'off' || macroData.source === 'openfoodfacts') offHits++;
         else if (macroData.source === 'ai') aiHits++;
 
         // Calculate based on quantity

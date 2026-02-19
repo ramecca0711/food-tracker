@@ -455,6 +455,32 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     return `${emoji} ${type.charAt(0).toUpperCase() + type.slice(1)}`;
   };
 
+  const SourceBadge = ({ item }: { item: any }) => {
+    const source = item.source as string | undefined;
+    if (!source) return null;
+
+    const config: Record<string, { label: string; className: string }> = {
+      cache: { label: 'DB',  className: 'bg-green-100 text-green-700 border-green-200' },
+      off:   { label: 'OFF', className: 'bg-blue-100  text-blue-700  border-blue-200'  },
+      ai:    { label: 'AI',  className: 'bg-purple-100 text-purple-700 border-purple-200' },
+      parsed:{ label: 'Inline', className: 'bg-gray-100 text-gray-600 border-gray-200' },
+    };
+    const cfg = config[source] ?? { label: source.toUpperCase(), className: 'bg-gray-100 text-gray-600 border-gray-200' };
+
+    return (
+      <span className="flex items-center gap-1">
+        <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border ${cfg.className}`}>
+          {cfg.label}
+        </span>
+        {item.unverified && (
+          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded border bg-yellow-50 text-yellow-700 border-yellow-200" title="Macros are estimated — tap to edit">
+            ~est
+          </span>
+        )}
+      </span>
+    );
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -632,9 +658,12 @@ Examples:
                               className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
                             >
                               <div className="flex-1">
-                                <div className="font-medium text-gray-900">{item.food_name}</div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-gray-900">{item.food_name}</span>
+                                  <SourceBadge item={item} />
+                                </div>
                                 <div className="text-sm text-gray-600 mt-0.5">
-                                  {item.quantity} · {item.calories} cal · 
+                                  {item.quantity} · {item.calories} cal ·
                                   P: {item.protein}g · F: {item.fat}g · C: {item.carbs}g
                                 </div>
                               </div>
@@ -652,6 +681,22 @@ Examples:
 
                             {isExpanded && (
                               <div className="p-3 pt-0 border-t border-gray-200 bg-gray-50 space-y-3">
+                                {/* Data source info */}
+                                {(item.source || item.match_description) && (
+                                  <div className="flex items-center gap-2 flex-wrap pt-2">
+                                    <SourceBadge item={item} />
+                                    {item.match_description && (
+                                      <span className="text-xs text-gray-500 truncate max-w-xs" title={item.match_description}>
+                                        matched: {item.match_description}
+                                      </span>
+                                    )}
+                                    {item.match_score != null && item.match_score > 0 && (
+                                      <span className="text-xs text-gray-400">
+                                        ({Math.round(item.match_score * 100)}% confidence)
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-3">
                                   <div>
                                     <label className="text-xs text-gray-600 mb-1.5 block font-medium">Food Name</label>
