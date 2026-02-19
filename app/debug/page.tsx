@@ -1,177 +1,117 @@
-'use client';
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { parseFood } from '@/lib/openai';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
-import Sidebar from '@/app/components/Sidebar';
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export default function DebugPage() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    checkUser();
-  }, []);
-
-  const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (session?.user) {
-      setUserId(session.user.id);
-      setUserEmail(session.user.email || null);
-    } else {
-      router.push('/');
-    }
-    setIsLoading(false);
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/');
-  };
-
-  const runBackfill = async () => {
-    if (!userId) return;
-
-    setIsProcessing(true);
-    setResult(null);
-
-    try {
-      const response = await fetch('/api/backfill-biodiversity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      });
-
-      const data = await response.json();
-      setResult(data);
-    } catch (error) {
-      setResult({ error: 'Failed to run backfill', details: error });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-gray-400">Loading...</div>
-      </div>
-    );
+function isMissing(v: any) {
+  if (v == null) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'string') return v.trim() === '';
+  try {
+    const s = JSON.stringify(v);
+    return s === '[]' || s === '{}' || s === 'null';
+  } catch {
+    return true;
   }
+}
 
-  if (!userId) return null;
+function buildPromptFromRow(item: any) {
+  const parts: string[] = [];
+  parts.push(`Food item: ${item.food_name}`);
+  if (item.quantity) parts.push(`Quantity: ${item.quantity}`);
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar userEmail={userEmail} onSignOut={handleSignOut} />
-      
-      <main className="flex-1">
-        <div className="p-4 sm:p-8 pt-20 lg:pt-8">
-          <div className="max-w-4xl mx-auto space-y-6">
-            
-            <h1 className="text-3xl font-bold text-gray-900">Debug Tools</h1>
+  // If row already has nutrition, include so we don't drift
+  const nums: string[] = [];
+  if (item.calories > 0) nums.push(`${item.calories} calories`);
+  if (item.protein > 0) nums.push(`${item.protein}g protein`);
+  if (item.fat > 0) nums.push(`${item.fat}g fat`);
+  if (item.carbs > 0) nums.push(`${item.carbs}g carbs`);
+  if (item.fiber > 0) nums.push(`${item.fiber}g fiber`);
+  if (item.sugar > 0) nums.push(`${item.sugar}g sugar`);
+  if (item.sodium > 0) nums.push(`${item.sodium}mg sodium`);
+  if (nums.length) parts.push(`Known nutrition: ${nums.join(', ')}`);
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Warning</h3>
-              <p className="text-sm text-yellow-800">
-                These are admin tools that can modify your data. Use with caution.
-              </p>
-            </div>
+  parts.push(`Goal: Return categories and whole_food_ingredients for biodiversity.`);
+  return parts.join('\n');
+}
 
-            {/* Backfill Biodiversity */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Backfill Biodiversity Data
-              </h2>
-              <p className="text-sm text-gray-600 mb-4">
-                This will re-analyze all your food items to extract whole food ingredients for biodiversity tracking. 
-                It processes items that are missing biodiversity data.
-              </p>
-              
-              <button
-                onClick={runBackfill}
-                disabled={isProcessing}
-                className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-              >
-                {isProcessing ? 'Processing...' : 'Run Backfill'}
-              </button>
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-              {result && (
-                <div className={`mt-4 p-4 rounded-lg ${
-                  result.error ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'
-                }`}>
-                  <pre className="text-sm overflow-auto">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
+export async function POST(request: Request) {
+  try {
+    const { userId } = await request.json();
+    if (!userId) return NextResponse.json({ error: 'User ID required' }, { status: 400 });
 
-              {/* Backfill Food Macros */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Backfill Food Macros
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-                Update all your food items with accurate macros from the master database and USDA. 
-                This will improve accuracy and consistency across your food log.
-            </p>
-            
-            <button
-                onClick={async () => {
-                setIsProcessing(true);
-                setResult(null);
-                
-                try {
-                    const response = await fetch('/api/backfill-food-macros', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId }),
-                    });
-                    
-                    const data = await response.json();
-                    setResult(data);
-                } catch (error) {
-                    setResult({ error: 'Failed to run backfill', details: error });
-                } finally {
-                    setIsProcessing(false);
-                }
-                }}
-                disabled={isProcessing}
-                className="px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-            >
-                {isProcessing ? 'Processing...' : 'Backfill Food Macros'}
-            </button>
+    const { data: items, error } = await supabase
+      .from('food_items')
+      .select('id,food_name,quantity,calories,protein,fat,carbs,fiber,sugar,sodium,whole_food_ingredients,categories')
+      .eq('user_id', userId)
+      .order('logged_at', { ascending: false });
 
-            {result && (
-                <div className={`mt-4 p-4 rounded-lg ${
-                result.error ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'
-                }`}>
-                <pre className="text-sm overflow-auto">
-                    {JSON.stringify(result, null, 2)}
-                </pre>
-                </div>
-            )}
-            </div>
+    if (error) {
+      console.error('Fetch error:', error);
+      return NextResponse.json({ error: 'Failed to fetch items', details: error.message }, { status: 500 });
+    }
 
-            {/* Database Stats */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Database Statistics
-              </h2>
-              <div className="text-sm text-gray-600">
-                Coming soon: View your database statistics, item counts, and data health.
-              </div>
-            </div>
+    const targets = (items || []).filter((it: any) => isMissing(it.whole_food_ingredients));
+    if (targets.length === 0) {
+      return NextResponse.json({ success: true, message: 'No items need processing', processed: 0 });
+    }
 
-          </div>
-        </div>
-      </main>
-    </div>
-  );
+    const results: any[] = [];
+    let successCount = 0;
+
+    for (const item of targets) {
+      try {
+        const prompt = buildPromptFromRow(item);
+        const parsed = await parseFood(prompt);
+
+        const parsedItem = parsed?.meals?.[0]?.items?.[0];
+        if (!parsedItem) {
+          results.push({ id: item.id, food_name: item.food_name, ok: false, error: 'No parsed item returned' });
+          continue;
+        }
+
+        const whole = Array.isArray(parsedItem.whole_food_ingredients) ? parsedItem.whole_food_ingredients : [];
+        const cats = Array.isArray(parsedItem.categories) ? parsedItem.categories : [];
+
+        const { error: updateError } = await supabase
+          .from('food_items')
+          .update({ whole_food_ingredients: whole, categories: cats })
+          .eq('id', item.id);
+
+        if (updateError) {
+          results.push({ id: item.id, food_name: item.food_name, ok: false, error: updateError.message });
+          continue;
+        }
+
+        successCount++;
+        results.push({ id: item.id, food_name: item.food_name, ok: true, whole_food_ingredients: whole, categories: cats });
+
+        await sleep(100);
+      } catch (e: any) {
+        results.push({ id: item.id, food_name: item.food_name, ok: false, error: e?.message || String(e) });
+        await sleep(200);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Backfill complete',
+      totalTargets: targets.length,
+      successful: successCount,
+      failed: targets.length - successCount,
+      // show only failures to keep payload small (or return all if you want)
+      failures: results.filter(r => !r.ok),
+    });
+  } catch (e: any) {
+    console.error('Backfill error:', e);
+    return NextResponse.json({ error: 'Failed to backfill', details: e?.message || String(e) }, { status: 500 });
+  }
 }
