@@ -10,7 +10,7 @@ This file contains instructions for Claude when working in this repository.
 - Next.js (App Router) + TypeScript + Tailwind CSS v4
 - Supabase (PostgreSQL) for data persistence
 - OpenAI API (GPT-4o-mini) for food parsing and ingredient extraction
-- USDA Food Database integration (via Cheerio scraping)
+- ~~USDA Food Database integration~~ (disabled/commented out — do not remove, may be re-enabled)
 - Recharts for data visualization
 - npm as the package manager
 
@@ -19,7 +19,7 @@ This file contains instructions for Claude when working in this repository.
 NEXT_PUBLIC_SUPABASE_URL        # Supabase project URL (public)
 NEXT_PUBLIC_SUPABASE_ANON_KEY   # Supabase anon key (public)
 OPENAI_API_KEY                  # OpenAI API key (server only)
-USDA_API_KEY                    # USDA FDC API key (server only)
+# USDA_API_KEY                  # Disabled — USDA integration currently not in use
 SUPABASE_SERVICE_ROLE_KEY       # Service role key for backfill routes (server only)
 NEXT_PUBLIC_APP_URL             # App URL, defaults to http://localhost:3000
 ```
@@ -32,7 +32,7 @@ NEXT_PUBLIC_APP_URL             # App URL, defaults to http://localhost:3000
 
 ## Code Style
 
-- **Always add clear, meaningful comments** throughout all code — functions, logic blocks, API routes, hooks, and components. Comments should explain *why*, not just *what*.
+- **Always add clear, meaningful comments** throughout all code — existing files touched during a task AND any new code written. Comments should explain *why*, not just *what*.
 - Use TypeScript types throughout; avoid `any`.
 - Follow the existing file/folder structure under `app/` and `lib/`.
 
@@ -72,7 +72,13 @@ Commits can be made freely after completing a task. Use clear, descriptive commi
 
 ## MCP
 
-MCP servers can be configured in `.mcp.json` at the project root. When adding MCP integrations, document them here with the server name, purpose, and any required credentials.
+MCP servers configured for this project. The Supabase MCP is the source of truth for database schema — do not manually document table schemas in this file.
+
+| Server | Purpose |
+|---|---|
+| Supabase MCP | Database introspection, schema reference, query assistance |
+| Vercel MCP | Deployment management, environment variables, logs |
+| Playwright (TBD) | E2E testing — to be configured when test suite is set up |
 
 ---
 
@@ -85,8 +91,7 @@ app/
   api/                  # Next.js API routes (serverless, all use route.ts)
     parse-food/         # GPT parses meal description → FoodItem[]
     parse-meal-ingredients/ # Extracts ingredients from text or URL
-    get-food-macros/    # Macro lookup: DB cache → USDA → AI fallback
-    usda-food-search/   # USDA FDC API search (returns per-100g macros)
+    get-food-macros/    # Macro lookup: DB cache → AI fallback (USDA disabled)
     backfill-*/         # One-off data processing (require service role key)
   components/           # Shared UI components
     PageLayout.tsx      # Wraps pages: auth check + Sidebar + layout
@@ -118,7 +123,7 @@ interface FoodItem {
   fiber: number;
   sugar: number;
   sodium: number;
-  categories: string[];           // e.g. ['protein', 'dairy']
+  categories: string[];             // e.g. ['protein', 'dairy']
   whole_food_ingredients: string[]; // used for biodiversity scoring
 }
 
@@ -135,7 +140,7 @@ interface ParsedFood {
 
 ### Database (Supabase)
 
-**Key tables:** `food_items`, `user_goals`, `saved_meals`
+Schema is managed and introspected via the **Supabase MCP** — refer to it for current table definitions rather than hardcoding them here.
 
 **Query conventions:**
 - Always scope to user: `.eq('user_id', userId)`
@@ -181,3 +186,4 @@ export async function POST(request: NextRequest) {
 - **Meal type order:** Hardcoded display sort: breakfast → lunch → dinner → snack.
 - **Cross-component refresh:** Uses a custom `window.dispatchEvent(new Event('foodLogged'))` pattern to trigger data refreshes across components.
 - **State management:** No Redux/Zustand — all local `useState` + `useEffect`. Complex state uses `Map` and `Set`.
+- **USDA disabled:** The USDA food search integration is commented out. Do not re-enable without discussion. The `get-food-macros` route currently falls back directly from DB cache → AI.
