@@ -4,7 +4,7 @@ export default function AboutPage() {
   return (
     <PageLayout>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold text-gray-900 mb-8">About TheraPie</h1>
+        <h1 className="text-4xl font-bold text-gray-900 mb-8">About HomeBase</h1>
         
         <div className="bg-white rounded-2xl border border-gray-200 p-8 mb-8">
           <div className="prose prose-lg max-w-none">
@@ -14,11 +14,11 @@ export default function AboutPage() {
             
             <p className="text-gray-700 mb-4">
               I started therapy in 2018, and it changed my life. Through that journey, I learned the importance 
-              of structure, intentionality, and celebrating small wins. TheraPie is how I structure my life, 
+              of structure, intentionality, and celebrating small wins. HomeBase is how I structure my life, 
               and I want to share it so we all can celebrate life being a piece of pie.
             </p>
             
-            <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Why TheraPie?</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Why HomeBase?</h2>
             <p className="text-gray-700 mb-4">
               Life is like a piece of pie. It's meant to be savored, enjoyed in slices, and shared with others. 
               Each slice represents a different aspect of our lives - our wellbeing, our growth, our connections.
@@ -26,7 +26,7 @@ export default function AboutPage() {
             
             <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Driven by Research & Math</h2>
             <p className="text-gray-700 mb-4">
-              TheraPie isn't just feel-good philosophy. It's grounded in evidence-based practices:
+              HomeBase isn't just feel-good philosophy. It's grounded in evidence-based practices:
             </p>
             <ul className="list-disc list-inside text-gray-700 mb-4 space-y-2">
               <li>Nutritional tracking based on FDA guidelines and peer-reviewed research</li>

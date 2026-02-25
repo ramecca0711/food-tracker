@@ -58,7 +58,7 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           {!isCollapsed && (
             <div>
-              <h1 className="text-xl font-bold text-gray-900">TheraPie</h1>
+              <h1 className="text-xl font-bold text-gray-900">HomeBase</h1>
               <p className="text-xs text-gray-500 mt-0.5">Life's a piece of pie</p>
             </div>
           )}

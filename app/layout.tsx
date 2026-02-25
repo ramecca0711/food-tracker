@@ -13,14 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TheraPie - Life's a piece of pie",
+  title: "HomeBase",
   description: "Structure your wellbeing, growth, and connections",
   manifest: "/manifest.json",
   themeColor: "#111827",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "TheraPie",
+    title: "HomeBase",
   },
   viewport: {
     width: "device-width",
@@ -42,7 +42,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#111827" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="TheraPie" />
+        <meta name="apple-mobile-web-app-title" content="HomeBase" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <link rel="icon" href="/favicon.ico" />
       </head>

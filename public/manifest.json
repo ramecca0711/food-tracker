@@ -1,6 +1,6 @@
 {
-  "name": "Food Log AI - Smart Nutrition Tracking",
-  "short_name": "Food Log AI",
+  "name": "HomeBase",
+  "short_name": "HomeBase",
   "description": "AI-powered food logging with biodiversity insights and personalized nutrition goals",
   "start_url": "/",
   "display": "standalone",

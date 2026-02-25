@@ -60,7 +60,7 @@ export default function Home() {
           /* Home Dashboard - logged in view */
           <div className="p-8 pt-20 lg:pt-8">
             <div className="max-w-6xl mx-auto">
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome to TheraPie 🥧</h1>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome to HomeBase</h1>
               <p className="text-xl text-gray-600 mb-8">Life's a piece of pie</p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -116,7 +116,7 @@ export default function Home() {
                 >
                   <div className="text-4xl mb-3">ℹ️</div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-blue-600">About</h3>
-                  <p className="text-sm text-gray-600">Learn about TheraPie</p>
+                  <p className="text-sm text-gray-600">Learn about HomeBase</p>
                 </button>
               </div>
             </div>
@@ -125,8 +125,8 @@ export default function Home() {
           /* Landing page - not logged in */
           <div className="flex flex-col items-center justify-center min-h-screen p-8">
             <div className="text-center max-w-2xl">
-              <div className="text-8xl mb-6">🥧</div>
-              <h1 className="text-5xl font-bold text-gray-900 mb-4">TheraPie</h1>
+              <div className="text-8xl mb-6">🏠</div>
+              <h1 className="text-5xl font-bold text-gray-900 mb-4">HomeBase</h1>
               <p className="text-2xl text-gray-600 mb-8">Life's a piece of pie</p>
               <p className="text-lg text-gray-600 mb-8">
                 Structure your wellbeing, growth, and connections. Track nutrition, set goals, 
