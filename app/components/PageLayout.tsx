@@ -50,8 +50,10 @@ export default function PageLayout({ children }: PageLayoutProps) {
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar userEmail={userEmail} onSignOut={handleSignOut} />
       
-      <main className="flex-1">
-        <div className="p-4 sm:p-8 pt-20 lg:pt-8">
+      <main className="flex-1 min-w-0">
+        {/* pt-16 on mobile gives clearance for the floating hamburger button (top-4, h-10).
+            lg:pt-8 restores normal top padding on desktop where the sidebar is in-flow. */}
+        <div className="p-4 sm:p-8 pt-16 lg:pt-8">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>

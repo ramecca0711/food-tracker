@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy Supabase client factory — deferred until first request so that Next.js
+// can import this module at build time without throwing "supabaseUrl is required".
+// The env vars are only available at runtime, not during next build's static pass.
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function convertToGrams(quantity: string): number {
   const normalized = quantity.toLowerCase().trim();
@@ -30,6 +35,8 @@ export async function POST(request: Request) {
     if (!userId) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 });
     }
+
+    const supabase = getSupabase();
 
     // Get all unique food names for this user
     const { data: items, error: fetchError } = await supabase
@@ -88,7 +95,7 @@ export async function POST(request: Request) {
         const ratio = quantityInGrams / 100;
 
         // Update the item
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabase // supabase is in scope from above
           .from('food_items')
           .update({
             calories: Math.round((macroData.food.calories_per_100g || 0) * ratio),

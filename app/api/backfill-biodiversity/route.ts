@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role for admin operations
-);
+// Lazy factory — deferred so Next.js can import this module at build time
+// without throwing "supabaseUrl is required" (env vars only available at runtime).
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role for admin operations
+  );
+}
 
 export async function POST(request: Request) {
   try {
+    const supabase = getSupabase();
+
     const { userId } = await request.json();
 
     if (!userId) {

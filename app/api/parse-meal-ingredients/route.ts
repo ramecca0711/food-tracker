@@ -3,17 +3,23 @@ import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import * as cheerio from 'cheerio';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy factories — deferred so Next.js can import this module at build time
+// without throwing "supabaseUrl is required" (env vars only available at runtime).
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+function getOpenAI() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabase();
+    const openai = getOpenAI();
+
     const { inputType, input, servings, userId } = await request.json();
 
     if (!inputType || !input) {

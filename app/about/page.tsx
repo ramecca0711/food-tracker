@@ -1,3 +1,7 @@
+// Force dynamic rendering — PageLayout imports lib/supabase which reads env vars
+// that are not available at build time during static prerendering.
+export const dynamic = 'force-dynamic';
+
 import PageLayout from '../components/PageLayout';
 
 const Tag = ({ children }: { children: React.ReactNode }) => (
