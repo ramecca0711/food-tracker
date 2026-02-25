@@ -72,13 +72,16 @@ Commits can be made freely after completing a task. Use clear, descriptive commi
 
 ## MCP
 
-MCP servers configured for this project. The Supabase MCP is the source of truth for database schema — do not manually document table schemas in this file.
+MCP servers configured for this project (tokens stored in `.mcp.json`). The Supabase MCP is the source of truth for database schema — do not manually document table schemas in this file.
 
 | Server | Purpose |
 |---|---|
 | Supabase MCP | Database introspection, schema reference, query assistance |
 | Vercel MCP | Deployment management, environment variables, logs |
+| GitHub MCP | Repository info, issues, pull requests |
 | Playwright (TBD) | E2E testing — to be configured when test suite is set up |
+
+**Supabase project:** `food-log-ai` (project ID: `kesrsbazwmnaxdqmvwuv`, region: `us-east-1`)
 
 ---
 
@@ -142,11 +145,39 @@ interface ParsedFood {
 
 Schema is managed and introspected via the **Supabase MCP** — refer to it for current table definitions rather than hardcoding them here.
 
+**Current tables (public schema):**
+- `food_items` — individual logged food entries per user (58+ rows of real data — protect carefully)
+- `food_logs` — parent log sessions (currently empty, mostly unused)
+- `master_food_database` — shared macro cache: cache → Open Food Facts → AI (no RLS)
+- `user_goals` — per-user macro targets and body metrics
+- `goals_history` — historical snapshots of goal changes
+- `saved_meals` — user-saved meal recipes / templates
+- `meal_plans` — scheduled meal plans linked to saved meals
+- `pantry_items` — user pantry inventory
+- `grocery_list_items` — shopping list items
+- `food_expiration_defaults` — lookup table for shelf life by food category
+
+**Known schema notes:**
+- `master_food_database` has two sodium columns: `sodium_per_100mg` (legacy, unused) and `sodium_mg_per_100g` (current). Routes use `sodium_mg_per_100g`. The legacy column should be cleaned up eventually.
+- `master_food_database` has no RLS — it is a shared cache, not user-scoped.
+
 **Query conventions:**
 - Always scope to user: `.eq('user_id', userId)`
 - Date range queries: `.gte('logged_at', dateStart)`
 - Default sort: `.order('logged_at', { ascending: false })`
 - Backfill routes use `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS)
+
+**Schema change safety — always follow this before any destructive migration:**
+1. If the table has data, snapshot it first:
+   ```sql
+   -- Option A: Copy data to a backup table (keeps original intact)
+   CREATE TABLE tablename_snap_YYYYMMDD AS SELECT * FROM tablename;
+   -- Option B: Rename original (then recreate from scratch)
+   ALTER TABLE tablename RENAME TO tablename_bak_YYYYMMDD;
+   ```
+2. Use the Supabase MCP `apply_migration` tool for all DDL — this records the change in `supabase_migrations` for audit history.
+3. Never DROP a table with user data without explicit confirmation.
+4. Snapshots can be cleaned up after the migration is confirmed stable (usually next session).
 
 ### API Route Conventions
 
@@ -162,6 +193,17 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json({ error: 'message' }, { status: 500 });
   }
+}
+```
+
+**Important:** Never initialize Supabase or OpenAI clients at module level. Use lazy factory functions instead:
+```typescript
+// WRONG — throws at build time when env vars aren't available
+const supabase = createClient(url!, key!);
+
+// CORRECT — only runs at request time
+function getSupabase() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 ```
 
@@ -186,4 +228,8 @@ export async function POST(request: NextRequest) {
 - **Meal type order:** Hardcoded display sort: breakfast → lunch → dinner → snack.
 - **Cross-component refresh:** Uses a custom `window.dispatchEvent(new Event('foodLogged'))` pattern to trigger data refreshes across components.
 - **State management:** No Redux/Zustand — all local `useState` + `useEffect`. Complex state uses `Map` and `Set`.
-- **USDA disabled:** The USDA food search integration is commented out. Do not re-enable without discussion. The `get-food-macros` route currently falls back directly from DB cache → AI.
+- **USDA disabled:** The USDA food search integration is commented out. Do not re-enable without discussion. The `get-food-macros` route lookup chain is: Supabase cache → Open Food Facts → AI.
+- **Macro lookup chain:** `parse-food` calls `get-food-macros` for items missing macros. Lookups are sequential (not parallel) to prevent regex `lastIndex` race conditions.
+- **cache_candidate pattern:** `get-food-macros` returns a `cache_candidate` object for OFF/AI results. The client holds this and only writes to `master_food_database` after the user confirms the log entry.
+- **Lazy client init:** All Supabase and OpenAI clients in API routes use factory functions (`getSupabase()`, `getOpenAI()`) rather than module-level constants — required so `next build` doesn't throw when env vars are absent during static analysis.
+- **Mobile sidebar:** On mobile the sidebar is a slide-over drawer (fully off-screen when closed). On desktop it's a sticky panel that can collapse to an icon strip. State is tracked separately: `isMobileOpen` for mobile, `isCollapsed` for desktop.
