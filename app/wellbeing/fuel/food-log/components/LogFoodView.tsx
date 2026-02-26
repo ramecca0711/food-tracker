@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import BarcodeScanner from '@/app/components/BarcodeScanner';
 import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
+import SourceBadge from '@/app/components/SourceBadge';
 
 export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
@@ -238,6 +239,9 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
           notes:                  mealNotes.get(i)           || null,
           eating_out:             mealEatingOut.get(i)       || false,
           logged_at:              selectedDateTime.toISOString(),
+          // Persist the macro source so we can display it on the dashboard
+          // and audit data quality over time.
+          source:                 item.source                || null,
         }));
 
         allItemsToInsert.push(...mealItems);
@@ -784,14 +788,8 @@ Examples:
                                   {item.quantity} · {item.calories} cal ·
                                   P: {item.protein}g · F: {item.fat}g · C: {item.carbs}g
                                 </div>
-                                {item.source && (
-                                  <div className="mt-1 text-[11px] text-gray-500">
-                                    Source: <span className="font-medium">{item.source}</span>
-                                    {item.unverified && (
-                                      <span className="ml-1 text-amber-600 font-medium">· unverified</span>
-                                    )}
-                                  </div>
-                                )}
+                                {/* Source badge — shows where macros came from (database, barcode, AI, etc.) */}
+                                <SourceBadge source={item.source} unverified={item.unverified} />
                                 {item.match_description && typeof item.match_score === 'number' && (
                                   <div className="mt-1 text-[11px] text-gray-500">
                                     Matched: <span className="font-medium">{item.match_description}</span> ·

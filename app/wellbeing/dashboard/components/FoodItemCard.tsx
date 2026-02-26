@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import SourceBadge from '@/app/components/SourceBadge';
 
 interface FoodItemCardProps {
   item: any;
@@ -216,6 +217,9 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
               📝 {item.notes}
             </div>
           )}
+
+          {/* Source badge — persisted from log time; shows data provenance */}
+          <SourceBadge source={item.source} />
 
           {item.eating_out && (
             <div className="mt-2">
