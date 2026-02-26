@@ -24,9 +24,14 @@ export interface FoodItem {
 
   provided_by_user?: boolean;
 
-  // 'cache' and 'off' are set when macros come from master_food_database or
-  // OpenFoodFacts respectively (via the get-food-macros lookup chain).
-  source?: 'ai' | 'ai_estimated' | 'ai_user_provided' | 'ai_fixed_from_macros' | 'cache' | 'off';
+  // Source of the nutrition data:
+  //   ai / ai_estimated / ai_fixed_from_macros / ai_user_provided — from parseFood()
+  //   cache  — hit in master_food_database (via get-food-macros)
+  //   off    — from Open Food Facts via get-food-macros
+  //   barcode       — user scanned a product barcode (Open Food Facts direct lookup)
+  //   label_photo   — user photographed a nutrition facts label (GPT-4o-mini vision)
+  // barcode and label_photo are treated as authoritative and never overridden.
+  source?: 'ai' | 'ai_estimated' | 'ai_user_provided' | 'ai_fixed_from_macros' | 'cache' | 'off' | 'barcode' | 'label_photo';
   unverified?: boolean;
 }
 

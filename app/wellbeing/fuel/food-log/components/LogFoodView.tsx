@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import BarcodeScanner from '@/app/components/BarcodeScanner';
+import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
 
 export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
@@ -32,6 +34,15 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const [mealToSave, setMealToSave] = useState<any>(null);
   const [saveMealName, setSaveMealName] = useState('');
   const [saveMealNotes, setSaveMealNotes] = useState('');
+
+  // ── Scanner modals ─────────────────────────────────────────────────────────
+  // showBarcodeScanner / showLabelCapture toggle the respective modal overlays.
+  // scanTargetMeal + scanTargetItem are set when the scan is triggered from an
+  // expanded item edit panel; null means it's a fresh scan from the main form.
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [showLabelCapture, setShowLabelCapture]     = useState(false);
+  const [scanTargetMeal, setScanTargetMeal]         = useState<number | null>(null);
+  const [scanTargetItem, setScanTargetItem]         = useState<number | null>(null);
 
   // ============================================================================
   // LOAD SAVED MEALS
@@ -304,6 +315,104 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   };
 
   // ============================================================================
+  // SCAN RESULT HANDLER
+  // ============================================================================
+
+  // Called by both BarcodeScanner and NutritionLabelCapture when they return data.
+  //
+  // Two modes:
+  //   • Item-edit mode  (scanTargetMeal/Item are set): replaces the macros of a
+  //     specific parsed item in editingMeals with the scanned facts.
+  //   • New-item mode   (no target set): appends a new item to the current meal
+  //     list, or creates a new single-item meal if nothing has been parsed yet.
+  //
+  // Scanned data is always treated as authoritative — source is 'barcode' or
+  // 'label_photo', provided_by_user: true — so the lookup chain will never
+  // override it when the item eventually reaches parse-food or get-food-macros.
+  const handleScanResult = (scanData: any) => {
+    const scannedItem = {
+      food_name:              String(scanData.food_name  || 'Scanned item'),
+      quantity:               String(scanData.quantity   || '1 serving'),
+      calories:               Number(scanData.calories)  || 0,
+      protein:                Number(scanData.protein)   || 0,
+      fat:                    Number(scanData.fat)       || 0,
+      carbs:                  Number(scanData.carbs)     || 0,
+      fiber:                  Number(scanData.fiber)     || 0,
+      sugar:                  Number(scanData.sugar)     || 0,
+      sodium:                 Number(scanData.sodium)    || 0,
+      categories:             scanData.categories             || [],
+      whole_food_ingredients: scanData.whole_food_ingredients || [],
+      source:                 scanData.source, // 'barcode' or 'label_photo'
+      provided_by_user:       true,            // treated as user-verified fact
+      unverified:             false,
+    };
+
+    if (scanTargetMeal !== null && scanTargetItem !== null) {
+      // Replace macros on an existing parsed item, preserving food_name
+      // only if the scan didn't return one
+      const updated = [...editingMeals];
+      updated[scanTargetMeal].items[scanTargetItem] = {
+        ...updated[scanTargetMeal].items[scanTargetItem],
+        ...scannedItem,
+      };
+      setEditingMeals(updated);
+      setScanTargetMeal(null);
+      setScanTargetItem(null);
+    } else {
+      // New scan: auto-assign a meal type based on the current time of day
+      const hour = new Date().getHours();
+      let meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack' = 'snack';
+      if (hour >= 5  && hour < 10) meal_type = 'breakfast';
+      else if (hour >= 11 && hour < 15) meal_type = 'lunch';
+      else if (hour >= 17 && hour < 21) meal_type = 'dinner';
+
+      if (editingMeals.length > 0) {
+        // Append to the first meal in the current parse session
+        const updated = [...editingMeals];
+        updated[0].items = [...(updated[0].items || []), scannedItem];
+        setEditingMeals(updated);
+      } else {
+        // Nothing parsed yet — bootstrap a new meal from this scan alone
+        const newMeal = { meal_type, confidence: 1.0, items: [scannedItem] };
+        setEditingMeals([newMeal]);
+        setParsedData({ meals: [newMeal], cache_candidates: [] });
+      }
+    }
+
+    // Close whichever scanner modal was open
+    setShowBarcodeScanner(false);
+    setShowLabelCapture(false);
+  };
+
+  // Open the barcode scanner targeting a specific item (item-edit mode)
+  const openBarcodeScannerForItem = (mealIndex: number, itemIndex: number) => {
+    setScanTargetMeal(mealIndex);
+    setScanTargetItem(itemIndex);
+    setShowBarcodeScanner(true);
+  };
+
+  // Open the label capture targeting a specific item (item-edit mode)
+  const openLabelCaptureForItem = (mealIndex: number, itemIndex: number) => {
+    setScanTargetMeal(mealIndex);
+    setScanTargetItem(itemIndex);
+    setShowLabelCapture(true);
+  };
+
+  // Open the barcode scanner in new-item mode (from the main form)
+  const openBarcodeScannerNew = () => {
+    setScanTargetMeal(null);
+    setScanTargetItem(null);
+    setShowBarcodeScanner(true);
+  };
+
+  // Open the label capture in new-item mode (from the main form)
+  const openLabelCaptureNew = () => {
+    setScanTargetMeal(null);
+    setScanTargetItem(null);
+    setShowLabelCapture(true);
+  };
+
+  // ============================================================================
   // SAVE MEAL FOR REUSE
   // ============================================================================
 
@@ -514,25 +623,35 @@ Examples:
             disabled={isLoading || !!parsedData}
           />
 
-          <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-            <input
-              id="label-photo-input"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                console.log('Label photo selected:', file.name);
-              }}
-            />
-            <label
-              htmlFor="label-photo-input"
-              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 hover:bg-gray-50"
+          {/* Scan shortcuts — barcode or nutrition label photo — add item without typing */}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={openBarcodeScannerNew}
+              disabled={isLoading}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
-              Add label photo
-            </label>
-            <span className="text-xs text-gray-500">Optional</span>
+              {/* Barcode icon */}
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6h2v12H4V6zm3 0h1v12H7V6zm2 0h2v12H9V6zm3 0h1v12h-1V6zm2 0h2v12h-2V6zm3 0h1v12h-1V6z" />
+              </svg>
+              Scan Barcode
+            </button>
+            <button
+              type="button"
+              onClick={openLabelCaptureNew}
+              disabled={isLoading}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {/* Camera / label icon */}
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Scan Label
+            </button>
           </div>
 
           <button
@@ -758,6 +877,38 @@ Examples:
                                         className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white text-center"
                                       />
                                     </div>
+                                  </div>
+                                </div>
+
+                                {/* Override with a verified scan — replaces macros for this item only */}
+                                <div className="pt-1">
+                                  <label className="text-xs text-gray-500 mb-1.5 block">
+                                    Override with scan (takes priority over AI estimates)
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openBarcodeScannerForItem(mealIndex, itemIndex)}
+                                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                    >
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                          d="M4 6h2v12H4V6zm3 0h1v12H7V6zm2 0h2v12H9V6zm3 0h1v12h-1V6zm2 0h2v12h-2V6zm3 0h1v12h-1V6z" />
+                                      </svg>
+                                      Scan Barcode
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openLabelCaptureForItem(mealIndex, itemIndex)}
+                                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                    >
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      </svg>
+                                      Scan Label
+                                    </button>
                                   </div>
                                 </div>
 
@@ -1070,6 +1221,30 @@ Examples:
           </div>
         )}
       </div>
+
+      {/* BARCODE SCANNER MODAL */}
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onResult={handleScanResult}
+          onClose={() => {
+            setShowBarcodeScanner(false);
+            setScanTargetMeal(null);
+            setScanTargetItem(null);
+          }}
+        />
+      )}
+
+      {/* NUTRITION LABEL CAPTURE MODAL */}
+      {showLabelCapture && (
+        <NutritionLabelCapture
+          onResult={handleScanResult}
+          onClose={() => {
+            setShowLabelCapture(false);
+            setScanTargetMeal(null);
+            setScanTargetItem(null);
+          }}
+        />
+      )}
 
       {/* SAVE MEAL MODAL */}
       {showSaveMealModal && (

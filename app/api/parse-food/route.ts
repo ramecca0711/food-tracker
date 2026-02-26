@@ -48,6 +48,10 @@ function mergeItemWithLookup(item: FoodItem, lookup: any): FoodItem {
   // Honour macros the user explicitly stated in their description
   if (item.provided_by_user) return item;
 
+  // Never override data that came from a barcode scan or a label photo —
+  // those are user-verified facts and have the highest priority.
+  if (item.source === 'barcode' || item.source === 'label_photo') return item;
+
   // AI fallback: keep parseFood's macros (better context); cache_candidate is
   // still collected below so the per-100g estimate gets written to the DB cache.
   if (lookup.source === 'ai') return item;
