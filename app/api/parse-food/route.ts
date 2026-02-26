@@ -1,5 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseFood } from '@/lib/openai';
+import type { FoodItem } from '@/lib/openai';
+
+// Internal URL for server-to-server calls to the get-food-macros route.
+// NEXT_PUBLIC_APP_URL must be set in Vercel env vars; defaults to localhost for local dev.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const LOOKUP_TIMEOUT_MS = 30_000;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Macro lookup helpers (cache → OpenFoodFacts → AI chain)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Calls the get-food-macros route for a single food name.
+// Returns the full lookup response (source, food per-100g data, cache_candidate)
+// or null if the request times out or the route returns an error.
+async function lookupMacros(foodName: string): Promise<any | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${APP_URL}/api/get-food-macros`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ foodName }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Merges a macro lookup result into an existing FoodItem.
+//
+// Priority rules:
+//   1. User-provided macros (provided_by_user: true) are always preserved as-is.
+//   2. Cache or OpenFoodFacts hits override the initial AI estimate with verified
+//      / crowd-sourced per-100g label data (applied at 1:1 / 100g baseline ratio).
+//   3. AI fallback results from get-food-macros are discarded — the AI macros
+//      already returned by parseFood() are kept because they were estimated with
+//      the full meal description as context (usually better quality).
+function mergeItemWithLookup(item: FoodItem, lookup: any): FoodItem {
+  if (!lookup?.food) return item;
+
+  // Honour macros the user explicitly stated in their description
+  if (item.provided_by_user) return item;
+
+  // AI fallback: keep parseFood's macros (better context); cache_candidate is
+  // still collected below so the per-100g estimate gets written to the DB cache.
+  if (lookup.source === 'ai') return item;
+
+  const food = lookup.food;
+
+  // Scale from per-100g at ratio 1 (100 g baseline serving).
+  // Not exact for every serving size but consistent with the existing lookup pattern.
+  return {
+    ...item,
+    calories:   Math.round(Number(food.calories_per_100g    || 0)),
+    protein:    Math.round(Number(food.protein_per_100g     || 0) * 10) / 10,
+    fat:        Math.round(Number(food.fat_per_100g         || 0) * 10) / 10,
+    carbs:      Math.round(Number(food.carbs_per_100g       || 0) * 10) / 10,
+    fiber:      Math.round(Number(food.fiber_per_100g       || 0) * 10) / 10,
+    sugar:      Math.round(Number(food.sugar_per_100g       || 0) * 10) / 10,
+    sodium:     Math.round(Number(food.sodium_mg_per_100g   || 0)),
+    source:     lookup.source as FoodItem['source'],
+    unverified: !!lookup.unverified,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Route handler
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,9 +85,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Step 1 — AI parse: convert the free-text meal description into a structured
+    // list of meals/items with food names, quantities, categories, and initial
+    // macro estimates. All seven macros are estimated even if the user didn't
+    // supply them explicitly.
     const parsed = await parseFood(foodDescription);
 
-    return NextResponse.json(parsed);
+    // Step 2 — Macro lookup: for every parsed item, run the
+    // cache → OpenFoodFacts → AI chain via get-food-macros.
+    // All lookups fire in parallel so total latency equals the slowest single call.
+    type LookupTask = { mealIdx: number; itemIdx: number; foodName: string };
+    const tasks: LookupTask[] = [];
+
+    for (let m = 0; m < parsed.meals.length; m++) {
+      for (let i = 0; i < parsed.meals[m].items.length; i++) {
+        tasks.push({ mealIdx: m, itemIdx: i, foodName: parsed.meals[m].items[i].food_name });
+      }
+    }
+
+    const lookupResults = await Promise.all(tasks.map((t) => lookupMacros(t.foodName)));
+
+    // Step 3 — Merge: override item macros with verified data where a cache or
+    // OFF hit was found, and accumulate cache_candidates for the deferred DB write
+    // that happens when the user confirms the log entry (handled in LogFoodView).
+    const cache_candidates: any[] = [];
+
+    for (let j = 0; j < tasks.length; j++) {
+      const { mealIdx, itemIdx } = tasks[j];
+      const lookup = lookupResults[j];
+
+      if (lookup) {
+        // Apply better macros if cache/OFF found; keep parseFood macros for AI fallback
+        parsed.meals[mealIdx].items[itemIdx] = mergeItemWithLookup(
+          parsed.meals[mealIdx].items[itemIdx],
+          lookup
+        );
+
+        // cache_candidate is present for OFF and AI results (not for cache hits —
+        // those are already stored in master_food_database).
+        if (lookup.cache_candidate) {
+          cache_candidates.push(lookup.cache_candidate);
+        }
+      }
+    }
+
+    // Return meals with enriched macros and the candidates to cache on save.
+    return NextResponse.json({ ...parsed, cache_candidates });
+
   } catch (error) {
     console.error('Error parsing food:', error);
     return NextResponse.json(

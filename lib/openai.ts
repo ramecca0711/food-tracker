@@ -24,7 +24,9 @@ export interface FoodItem {
 
   provided_by_user?: boolean;
 
-  source?: 'ai' | 'ai_estimated' | 'ai_user_provided' | 'ai_fixed_from_macros';
+  // 'cache' and 'off' are set when macros come from master_food_database or
+  // OpenFoodFacts respectively (via the get-food-macros lookup chain).
+  source?: 'ai' | 'ai_estimated' | 'ai_user_provided' | 'ai_fixed_from_macros' | 'cache' | 'off';
   unverified?: boolean;
 }
 
