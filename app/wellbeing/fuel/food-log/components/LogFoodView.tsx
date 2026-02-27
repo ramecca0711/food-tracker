@@ -203,6 +203,18 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setMealEatingOut(newEatingOut);
   };
 
+  // Remove a single item from editingMeals. If it was the last item in its
+  // meal group, the whole meal row is removed too.
+  const handleDeleteItem = (mealIndex: number, itemIndex: number) => {
+    const updated = editingMeals
+      .map((meal, mi) => {
+        if (mi !== mealIndex) return meal;
+        return { ...meal, items: meal.items.filter((_: any, ii: number) => ii !== itemIndex) };
+      })
+      .filter((meal) => meal.items.length > 0); // drop now-empty meals
+    setEditingMeals(updated);
+  };
+
   // ============================================================================
   // SAVE TO DATABASE
   // ============================================================================
@@ -777,10 +789,12 @@ Examples:
 
                         return (
                           <div key={itemIndex} className="border border-gray-200 rounded-lg overflow-hidden">
-                            <button
-                              type="button"
+                            {/* Compact card header — click anywhere to expand, × to delete.
+                                Using a div (not button) to allow the nested delete button
+                                without violating the button-in-button HTML rule.          */}
+                            <div
                               onClick={() => toggleExpand(mealIndex, itemIndex)}
-                              className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
+                              className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between cursor-pointer"
                             >
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900">{item.food_name}</div>
@@ -797,13 +811,37 @@ Examples:
                                   </div>
                                 )}
                               </div>
-                              <svg
-                                className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+
+                              {/* Right side: delete × and expand chevron */}
+                              <div
+                                className="flex items-center gap-1 ml-2 shrink-0"
+                                onClick={(e) => e.stopPropagation()} // prevent expand toggle
                               >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(mealIndex, itemIndex)}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Remove item"
+                                  aria-label="Remove item"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                                {/* Chevron — still clickable via the parent div's onClick */}
+                                <div
+                                  onClick={() => toggleExpand(mealIndex, itemIndex)}
+                                  className="cursor-pointer p-1"
+                                >
+                                  <svg
+                                    className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
 
                             {isExpanded && (
                               <div className="p-3 pt-0 border-t border-gray-200 bg-gray-50 space-y-3">
