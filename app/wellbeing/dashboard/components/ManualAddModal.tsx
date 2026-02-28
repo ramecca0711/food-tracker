@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -23,6 +23,8 @@ interface ManualAddModalProps {
   onAddMeal: (meal: any) => void;
   onAddCustomMeal: (customMeal: any) => void;
   dateKey: string;
+  onSearchFoods: (query: string) => Promise<any[]>;
+  commonFoods: any[];
 }
 
 export default function ManualAddModal({
@@ -32,6 +34,8 @@ export default function ManualAddModal({
   onAddMeal,
   onAddCustomMeal,
   dateKey,
+  onSearchFoods,
+  commonFoods,
 }: ManualAddModalProps) {
   // Step flow: choose meal type -> choose source -> build/add foods.
   const [mode, setMode] = useState<'mealType' | 'select' | 'custom' | 'saved'>('mealType');
@@ -39,6 +43,10 @@ export default function ManualAddModal({
 
   const [mealFoods, setMealFoods] = useState<CustomFood[]>([]);
   const [showAddFoodForm, setShowAddFoodForm] = useState(false);
+  const [showCommonFoods, setShowCommonFoods] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   const [draftFoodName, setDraftFoodName] = useState('');
   const [draftQuantity, setDraftQuantity] = useState('');
@@ -69,6 +77,10 @@ export default function ManualAddModal({
     setSelectedMealType('lunch');
     setMealFoods([]);
     setShowAddFoodForm(false);
+    setShowCommonFoods(false);
+    setSearchText('');
+    setSearchResults([]);
+    setSearching(false);
 
     setDraftFoodName('');
     setDraftQuantity('');
@@ -138,6 +150,24 @@ export default function ManualAddModal({
     setShowAddFoodForm(false);
   };
 
+  const addFoodTemplate = (food: any) => {
+    const nextFood: CustomFood = {
+      food_name: String(food.food_name || '').trim(),
+      quantity: String(food.quantity || '1 serving').trim() || '1 serving',
+      calories: Number(food.calories) || 0,
+      protein: Number(food.protein) || 0,
+      fat: Number(food.fat) || 0,
+      carbs: Number(food.carbs) || 0,
+      fiber: Number(food.fiber) || 0,
+      sugar: Number(food.sugar) || 0,
+      sodium: Number(food.sodium) || 0,
+    };
+    if (!nextFood.food_name) return;
+    setMealFoods((prev) => [...prev, nextFood]);
+    setSearchText('');
+    setSearchResults([]);
+  };
+
   const handleAddCustomMeal = () => {
     const notes = customEatingOut && customRestaurant
       ? `${customRestaurant}${customNotes ? ' - ' + customNotes : ''}`
@@ -152,6 +182,25 @@ export default function ManualAddModal({
 
     handleClose();
   };
+
+  useEffect(() => {
+    if (mode !== 'custom') return;
+    const query = searchText.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const results = await onSearchFoods(query);
+      setSearchResults(results || []);
+      setSearching(false);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [mode, onSearchFoods, searchText]);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -218,6 +267,22 @@ export default function ManualAddModal({
               <div className="text-lg font-semibold text-gray-900">Choose Saved Meal</div>
               <div className="text-sm text-gray-600">Apply selected meal type and add instantly</div>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onAddCustomMeal({
+                  meal_type: selectedMealType,
+                  items: [],
+                  notes: null,
+                  eating_out: false,
+                });
+                handleClose();
+              }}
+              className="w-full px-3 py-2 border border-blue-200 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Save without Adding
+            </button>
           </div>
         )}
 
@@ -262,13 +327,77 @@ export default function ManualAddModal({
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowAddFoodForm((prev) => !prev)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              {showAddFoodForm ? 'Hide Add Food' : 'Add Food'}
-            </button>
+            <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <label className="block text-xs font-medium text-gray-700">Search food</label>
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                placeholder="Search your foods first, then full database..."
+              />
+
+              {searching && <div className="text-xs text-gray-500">Searching...</div>}
+
+              {searchResults.length > 0 && (
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {searchResults.map((food, idx) => (
+                    <div
+                      key={`manual-search-${food.food_name}-${idx}`}
+                      className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-md px-2 py-1.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm text-gray-900 truncate">{food.food_name}</div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {food.quantity || '1 serving'} · {food.calories || 0} cal
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addFoodTemplate(food)}
+                        className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowCommonFoods((prev) => !prev)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-white"
+              >
+                {showCommonFoods ? 'Hide Common Foods' : 'Show Common Foods (Top 5)'}
+              </button>
+
+              {showCommonFoods && (
+                <div className="flex flex-wrap gap-1.5">
+                  {commonFoods.slice(0, 5).map((food, idx) => (
+                    <button
+                      key={`manual-common-${food.food_name}-${idx}`}
+                      type="button"
+                      onClick={() => addFoodTemplate(food)}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 text-gray-700"
+                    >
+                      + {food.food_name}
+                    </button>
+                  ))}
+                  {commonFoods.length === 0 && (
+                    <div className="text-xs text-gray-500">No common foods yet.</div>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowAddFoodForm((prev) => !prev)}
+                className="w-full px-3 py-2 border border-blue-200 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100"
+              >
+                {showAddFoodForm ? 'Hide Manual Add' : 'Add Manually'}
+              </button>
+            </div>
 
             {showAddFoodForm && (
               <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">

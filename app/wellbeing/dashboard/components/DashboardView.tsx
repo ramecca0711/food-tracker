@@ -89,6 +89,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
   const [showManualAddModal, setShowManualAddModal] = useState(false);
   const [manualAddDate, setManualAddDate] = useState<string>('');
   const [savedMeals, setSavedMeals] = useState<any[]>([]);
+  const [emptyMealsByDate, setEmptyMealsByDate] = useState<Map<string, Set<string>>>(new Map());
 
   // ============================================================================
   // TOGGLE FUNCTIONS
@@ -579,8 +580,14 @@ export default function DashboardView({ userId }: { userId: string | null }) {
       // Blank meal is allowed in the UI so users can drag/drop later.
       // If no food rows exist yet, skip insert and just refresh the view.
       if (!items[0]?.food_name) {
+        setEmptyMealsByDate((prev) => {
+          const next = new Map(prev);
+          const current = new Set(next.get(manualAddDate) || []);
+          current.add(customMeal.meal_type);
+          next.set(manualAddDate, current);
+          return next;
+        });
         setShowManualAddModal(false);
-        loadDashboardData();
         return;
       }
 
@@ -986,6 +993,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                       onToggleOverride={() =>
                         toggleIncompleteOverride(day.dateKey, incompleteOverrides.has(day.dateKey))
                       }
+                      emptyMealTypes={Array.from(emptyMealsByDate.get(day.dateKey) || [])}
                     />
                   );
                 })}
@@ -1004,6 +1012,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         onAddMeal={addSavedMealToDate}
         onAddCustomMeal={addCustomMealToDate}
         dateKey={manualAddDate}
+        onSearchFoods={searchFoods}
+        commonFoods={quickAddFoods}
       />
     </div>
 

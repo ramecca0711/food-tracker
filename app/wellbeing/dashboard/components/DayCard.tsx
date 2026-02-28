@@ -22,6 +22,7 @@ interface DayCardProps {
   isIncomplete?:     boolean;
   isOverridden?:     boolean;   // user clicked "Count anyway" to include this day
   onToggleOverride?: () => void;
+  emptyMealTypes?: string[];
 }
 
 export default function DayCard({
@@ -42,11 +43,15 @@ export default function DayCard({
   isIncomplete,
   isOverridden,
   onToggleOverride,
+  emptyMealTypes = [],
 }: DayCardProps) {
   
   const [isBioExpanded, setIsBioExpanded] = useState(false);
-  const mealTypes: Array<'breakfast' | 'lunch' | 'dinner' | 'snack'> = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
   const mealsByType = new Map<string, any>((day.meals || []).map((meal: any) => [meal.meal_type, meal]));
+  const visibleMealTypes = Array.from(
+    new Set<string>([...(day.meals || []).map((meal: any) => meal.meal_type), ...emptyMealTypes])
+  ).sort((a, b) => (mealOrder[a] ?? 999) - (mealOrder[b] ?? 999));
 
   const formatDate = (date: Date) => {
     const today = new Date();
@@ -296,7 +301,7 @@ export default function DayCard({
 
           {/* Meals */}
           <div className="space-y-2">
-            {mealTypes.map((mealType) => {
+            {visibleMealTypes.map((mealType) => {
               const meal = mealsByType.get(mealType) || {
                 meal_type: mealType,
                 items: [],
