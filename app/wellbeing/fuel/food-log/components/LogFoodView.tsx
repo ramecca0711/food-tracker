@@ -80,6 +80,8 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const [mealFoodSearch, setMealFoodSearch]         = useState<Map<number, string>>(new Map());
   const [mealFoodSearchResults, setMealFoodSearchResults] = useState<Map<number, FoodTemplate[]>>(new Map());
   const [mealFoodSearching, setMealFoodSearching]   = useState<Map<number, boolean>>(new Map());
+  const [draggingItem, setDraggingItem] = useState<{ mealIndex: number; itemIndex: number } | null>(null);
+  const [dragOverMeal, setDragOverMeal] = useState<number | null>(null);
 
   const toSafeAmount = (raw: any) => {
     const n = parseFloat(String(raw));
@@ -489,6 +491,75 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     const newEatingOut = new Map(mealEatingOut);
     newEatingOut.set(mealIndex, !newEatingOut.get(mealIndex));
     setMealEatingOut(newEatingOut);
+  };
+
+  const addEmptyMeal = () => {
+    const newMeal = {
+      meal_type: inferMealTypeForNow(),
+      confidence: 1.0,
+      items: [],
+    };
+    const newMealIndex = editingMeals.length;
+    setEditingMeals([...editingMeals, newMeal]);
+    setParsedData((prev: any) =>
+      prev
+        ? { ...prev, meals: [...(prev.meals || []), newMeal] }
+        : { meals: [newMeal], cache_candidates: [] }
+    );
+    setMealAddFoodOpen((prev) => {
+      const next = new Set(prev);
+      next.add(newMealIndex);
+      return next;
+    });
+  };
+
+  const moveItemToMeal = (targetMealIndex: number) => {
+    if (!draggingItem) return;
+    const { mealIndex: sourceMealIndex, itemIndex: sourceItemIndex } = draggingItem;
+    setDragOverMeal(null);
+
+    if (sourceMealIndex === targetMealIndex) {
+      setDraggingItem(null);
+      return;
+    }
+
+    const sourceMeal = editingMeals[sourceMealIndex];
+    const targetMeal = editingMeals[targetMealIndex];
+    if (!sourceMeal || !targetMeal || !sourceMeal.items?.[sourceItemIndex]) {
+      setDraggingItem(null);
+      return;
+    }
+
+    const movedItem = sourceMeal.items[sourceItemIndex];
+    const updatedMeals = editingMeals.map((meal) => ({
+      ...meal,
+      items: [...(meal.items || [])],
+    }));
+
+    updatedMeals[sourceMealIndex].items.splice(sourceItemIndex, 1);
+    updatedMeals[targetMealIndex].items.push(movedItem);
+    setEditingMeals(updatedMeals);
+
+    const nextExpanded = new Map<string, Set<number>>();
+    expandedItems.forEach((set, key) => {
+      nextExpanded.set(key, new Set(set));
+    });
+
+    const sourceKey = String(sourceMealIndex);
+    const sourceSet = new Set(nextExpanded.get(sourceKey) || []);
+    sourceSet.delete(sourceItemIndex);
+    const adjustedSourceSet = new Set<number>();
+    sourceSet.forEach((index) => adjustedSourceSet.add(index > sourceItemIndex ? index - 1 : index));
+    if (adjustedSourceSet.size > 0) nextExpanded.set(sourceKey, adjustedSourceSet);
+    else nextExpanded.delete(sourceKey);
+
+    const targetKey = String(targetMealIndex);
+    const targetSet = new Set(nextExpanded.get(targetKey) || []);
+    targetSet.add(updatedMeals[targetMealIndex].items.length - 1);
+    nextExpanded.set(targetKey, targetSet);
+
+    setExpandedItems(nextExpanded);
+    setDraggingItem(null);
   };
 
   // Remove a single item from editingMeals. If it was the last item in its
@@ -1085,6 +1156,16 @@ Examples:
               <div className="text-sm text-blue-700">
                 {editingMeals.map((meal) => formatMealType(meal.meal_type)).join(' · ')}
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addEmptyMeal}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 hover:bg-blue-100"
+                >
+                  + Add Meal
+                </button>
+                <span className="text-xs text-blue-700">Drag food items between meal cards to reorganize.</span>
+              </div>
             </div>
 
             <div className="space-y-6">
@@ -1100,7 +1181,24 @@ Examples:
                 );
 
                 return (
-                  <div key={mealIndex} className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                  <div
+                    key={mealIndex}
+                    className={`border-2 rounded-xl overflow-hidden transition-colors ${
+                      dragOverMeal === mealIndex ? 'border-blue-500 bg-blue-50/30' : 'border-gray-200'
+                    }`}
+                    onDragOver={(e) => {
+                      if (!draggingItem || draggingItem.mealIndex === mealIndex) return;
+                      e.preventDefault();
+                      if (dragOverMeal !== mealIndex) setDragOverMeal(mealIndex);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverMeal === mealIndex) setDragOverMeal(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      moveItemToMeal(mealIndex);
+                    }}
+                  >
                     <div className="bg-gray-50 px-5 py-4 border-b border-gray-200">
                       <div className="flex items-start justify-between mb-4">
                         <div>
@@ -1178,7 +1276,19 @@ Examples:
                         const isExpanded = expandedItems.get(`${mealIndex}`)?.has(itemIndex);
 
                         return (
-                          <div key={itemIndex} className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div
+                            key={itemIndex}
+                            className="border border-gray-200 rounded-lg overflow-hidden"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = 'move';
+                              setDraggingItem({ mealIndex, itemIndex });
+                            }}
+                            onDragEnd={() => {
+                              setDraggingItem(null);
+                              setDragOverMeal(null);
+                            }}
+                          >
                             {/* Compact card header — click anywhere to expand, × to delete.
                                 Using a div (not button) to allow the nested delete button
                                 without violating the button-in-button HTML rule.          */}
@@ -1372,6 +1482,13 @@ Examples:
                         className="mt-3 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
                       >
                         {mealAddFoodOpen.has(mealIndex) ? 'Hide Add Food' : 'Add Food'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addEmptyMeal}
+                        className="mt-2 w-full px-3 py-2 border border-blue-200 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100"
+                      >
+                        + Add Meal
                       </button>
 
                       {mealAddFoodOpen.has(mealIndex) && (

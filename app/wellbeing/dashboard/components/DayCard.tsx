@@ -10,6 +10,7 @@ interface DayCardProps {
   onToggleDay: () => void;
   onEditItem: (itemId: string, updates: any) => void;
   onDeleteItem: (itemId: string) => void;
+  onDeleteMeal: (dayDate: Date, mealType: string) => void;
   onManualAdd: (dateKey: string) => void;
   expandedMeals: Set<string>;
   onToggleMeal: (mealType: string) => void;
@@ -29,6 +30,7 @@ export default function DayCard({
   onToggleDay,
   onEditItem,
   onDeleteItem,
+  onDeleteMeal,
   onManualAdd,
   expandedMeals,
   onToggleMeal,
@@ -294,11 +296,13 @@ export default function DayCard({
               <MealCard
                 key={meal.meal_type}
                 meal={meal}
+                mealType={meal.meal_type}
                 dayDate={day.date}
                 isExpanded={expandedMeals.has(meal.meal_type)}
                 onToggle={() => onToggleMeal(meal.meal_type)}
                 onEditItem={onEditItem}
                 onDeleteItem={onDeleteItem}
+                onDeleteMeal={onDeleteMeal}
                 onSearchFoods={onSearchFoods}
                 onAddFood={(food) => onAddFoodToMeal(day.date, meal.meal_type, food)}
                 quickAddFoods={quickAddFoods}

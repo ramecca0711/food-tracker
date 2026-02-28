@@ -5,11 +5,13 @@ import FoodItemCard from './FoodItemCard';
 
 interface MealCardProps {
   meal: any;
+  mealType: string;
   dayDate: Date;
   isExpanded: boolean;
   onToggle: () => void;
   onEditItem: (itemId: string, updates: any) => void;
   onDeleteItem: (itemId: string) => void;
+  onDeleteMeal: (dayDate: Date, mealType: string) => void;
   onSearchFoods: (query: string) => Promise<any[]>;
   onAddFood: (food: any) => void;
   quickAddFoods: any[];
@@ -17,11 +19,13 @@ interface MealCardProps {
 
 export default function MealCard({
   meal,
+  mealType,
   dayDate,
   isExpanded,
   onToggle,
   onEditItem,
   onDeleteItem,
+  onDeleteMeal,
   onSearchFoods,
   onAddFood,
   quickAddFoods,
@@ -71,8 +75,11 @@ export default function MealCard({
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <button
+      <div
         onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && onToggle()}
         className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
       >
         <div className="flex-1">
@@ -94,6 +101,18 @@ export default function MealCard({
               C: {Math.round(meal.totals.carbs)}g
             </div>
           </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteMeal(dayDate, mealType);
+            }}
+            className="text-sm px-2 py-1 rounded hover:bg-red-50"
+            title="Delete whole meal"
+            aria-label="Delete whole meal"
+          >
+            🗑️
+          </button>
           <svg
             className={`w-4 h-4 text-gray-400 transition-transform ${
               isExpanded ? 'rotate-180' : ''
@@ -105,7 +124,7 @@ export default function MealCard({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="px-3 pb-3 space-y-1.5 border-t border-gray-100">

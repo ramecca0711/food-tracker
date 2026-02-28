@@ -186,6 +186,32 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     }
   };
 
+  const handleDeleteMeal = async (dayDate: Date, mealType: string) => {
+    if (!userId) return;
+    if (!confirm(`Delete the entire ${mealType} meal?`)) return;
+
+    try {
+      const dayStart = new Date(dayDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const { error } = await supabase
+        .from('food_items')
+        .delete()
+        .eq('user_id', userId)
+        .eq('meal_type', mealType)
+        .gte('logged_at', dayStart.toISOString())
+        .lt('logged_at', dayEnd.toISOString());
+
+      if (error) throw error;
+      loadDashboardData();
+    } catch (error) {
+      console.error('Error deleting meal:', error);
+      alert('Failed to delete meal');
+    }
+  };
+
   const searchFoods = async (query: string): Promise<FoodSearchResult[]> => {
     if (!userId || !query.trim()) return [];
 
@@ -915,6 +941,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                       onToggleDay={() => toggleDay(dayKey)}
                       onEditItem={handleEditItem}
                       onDeleteItem={handleDeleteItem}
+                      onDeleteMeal={handleDeleteMeal}
                       onManualAdd={openManualAddModal}
                       expandedMeals={dayExpandedMeals}
                       onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}
