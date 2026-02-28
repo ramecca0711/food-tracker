@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import AuthModal from './components/AuthModal';
 import ThemeSwitcher from './components/ThemeSwitcher';
 import { useAuth } from './components/AuthProvider';
+import BrandMark from './components/BrandMark';
 
 const quickLinks = [
   {
@@ -50,7 +51,7 @@ const quickLinks = [
   },
   {
     title: 'About',
-    subtitle: 'Learn about HomeBase',
+    subtitle: 'Learn about Home Base',
     path: '/about',
     icon: (
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8h.01M11 12h2v5h-2zM4 12a8 8 0 1016 0 8 8 0 00-16 0z" />
@@ -83,8 +84,11 @@ export default function Home() {
             <div className="mx-auto max-w-6xl space-y-6">
               <div className="flex flex-col gap-4 rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-6 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">HomeBase</h1>
-                  <p className="mt-1 text-sm text-[var(--text-muted)]">A calm home for your daily wellbeing habits.</p>
+                  <div className="flex items-center gap-3">
+                    <BrandMark className="h-10 w-10" />
+                    <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">Home Base</h1>
+                  </div>
+                  <p className="mt-1 text-sm text-[var(--text-muted)]">Build a home within yourself.</p>
                 </div>
                 <div className="w-full sm:w-52">
                   <ThemeSwitcher />
@@ -114,12 +118,10 @@ export default function Home() {
           <div className="flex min-h-screen flex-col items-center justify-center p-6">
             <div className="w-full max-w-2xl rounded-3xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-8 text-center shadow-sm">
               <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-1)] text-[var(--accent-strong)]">
-                <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 11l9-7 9 7v9a2 2 0 01-2 2h-4v-7H9v7H5a2 2 0 01-2-2v-9z" />
-                </svg>
+                <BrandMark className="h-9 w-9" />
               </div>
-              <h1 className="text-4xl font-semibold tracking-tight text-[var(--text-primary)]">HomeBase</h1>
-              <p className="mt-2 text-lg text-[var(--text-muted)]">Life&apos;s a piece of pie</p>
+              <h1 className="text-4xl font-semibold tracking-tight text-[var(--text-primary)]">Home Base</h1>
+              <p className="mt-2 text-lg text-[var(--text-muted)]">Build a home within yourself.</p>
               <p className="mx-auto mt-5 max-w-xl text-sm leading-6 text-[var(--text-muted)]">
                 Keep nutrition, routines, and growth plans in one calm workspace. Pick the style you like best and keep moving.
               </p>

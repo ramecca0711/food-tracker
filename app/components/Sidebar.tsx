@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ThemeSwitcher from './ThemeSwitcher';
+import BrandMark from './BrandMark';
 
 interface SidebarProps {
   userEmail: string | null;
@@ -383,9 +384,12 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
         <div className="flex items-center justify-between p-4 border-b border-[var(--border-soft)] shrink-0">
           {/* Show logo text when: desktop expanded OR mobile open */}
           {(!isCollapsed || isMobileOpen) && (
-            <div>
-              <h1 className="text-xl font-semibold text-[var(--text-primary)]">HomeBase</h1>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">Life&apos;s a piece of pie</p>
+            <div className="flex items-start gap-2">
+              <BrandMark className="h-8 w-8 shrink-0" />
+              <div>
+                <h1 className="text-xl font-semibold text-[var(--text-primary)]">Home Base</h1>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">Build a home within yourself.</p>
+              </div>
             </div>
           )}
 
