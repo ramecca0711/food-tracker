@@ -7,7 +7,32 @@ interface Props {
   onClose: () => void;
 }
 
-// Compress an image File using a canvas element and return a raw base64 string
+// Detect HEIC/HEIF by MIME type or file extension.
+// Browsers sometimes report the MIME type as '' for HEIC files, so we check both.
+function isHeic(file: File): boolean {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return (
+    type === 'image/heic' ||
+    type === 'image/heif' ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  );
+}
+
+// Convert a HEIC/HEIF file to a JPEG Blob using heic2any (lazy-loaded so it
+// doesn't add to the initial bundle — it's only fetched when actually needed).
+// OpenAI's vision API and createImageBitmap both require JPEG/PNG/GIF/WebP,
+// so HEIC must be converted before we can do anything with it.
+async function heicToJpegBlob(file: File): Promise<Blob> {
+  // Dynamic import keeps heic2any out of the main bundle
+  const heic2any = (await import('heic2any')).default;
+  const result = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+  // heic2any returns Blob | Blob[] (Blob[] for multi-page HEIC); take the first frame
+  return Array.isArray(result) ? result[0] : result;
+}
+
+// Compress an image Blob/File using a canvas element and return a raw base64 string
 // (without the "data:...;base64," prefix).
 //
 // Why compress? Mobile camera photos are typically 5–10 MB. Base64-encoding adds
@@ -16,14 +41,14 @@ interface Props {
 // Resizing to ≤ 1600 px and re-encoding as JPEG at 85 % quality keeps the
 // payload well under 1 MB while retaining enough detail for GPT-4o-mini to read
 // label text clearly.
-async function compressToBase64(file: File): Promise<string> {
+async function compressToBase64(blob: Blob): Promise<string> {
   const MAX_DIM = 1600;
   const QUALITY = 0.85;
 
-  // Load the image into a browser Image element so we can measure its dimensions
-  const bitmap = await createImageBitmap(file);
+  // createImageBitmap accepts any Blob (Blob and File are both supported)
+  const bitmap = await createImageBitmap(blob);
 
-  // Calculate the scaled dimensions, capping the longer side at MAX_DIM
+  // Cap the longer side at MAX_DIM, preserving aspect ratio
   const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width  * scale);
   const h = Math.round(bitmap.height * scale);
@@ -34,7 +59,7 @@ async function compressToBase64(file: File): Promise<string> {
   canvas.height = h;
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h);
 
-  // Convert the canvas to a base64 string (strip the data-URL prefix)
+  // Strip the data-URL prefix — API expects raw base64 only
   const dataUrl = canvas.toDataURL('image/jpeg', QUALITY);
   return dataUrl.split(',')[1];
 }
@@ -79,8 +104,9 @@ export default function NutritionLabelCapture({ onResult, onClose }: Props) {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset so the user can re-capture after an error without selecting a new file
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    // Clear both inputs so the same file can be re-selected after an error
+    if (fileInputRef.current)    fileInputRef.current.value    = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
 
     setError(null);
     setIsProcessing(true);
@@ -92,8 +118,15 @@ export default function NutritionLabelCapture({ onResult, onClose }: Props) {
     reader.readAsDataURL(file);
 
     try {
-      // Compress before sending — canvas always outputs JPEG regardless of input format
-      const imageBase64 = await compressToBase64(file);
+      // iPhones save photos as HEIC by default. createImageBitmap and OpenAI's
+      // vision API don't support HEIC, so convert to JPEG first.
+      let sourceBlob: Blob = file;
+      if (isHeic(file)) {
+        sourceBlob = await heicToJpegBlob(file);
+      }
+
+      // Compress to ≤ 1600 px JPEG — keeps the request body under Vercel's 4.5 MB limit
+      const imageBase64 = await compressToBase64(sourceBlob);
       const mimeType    = 'image/jpeg';
 
       const res  = await fetch('/api/parse-nutrition-label', {
@@ -113,8 +146,10 @@ export default function NutritionLabelCapture({ onResult, onClose }: Props) {
       setPendingResult(data);
       setEditingName(data.food_name || '');
       setIsProcessing(false);
-    } catch {
-      setError('Network error. Please check your connection and try again.');
+    } catch (err: unknown) {
+      // Surface a useful message rather than the generic "Network error"
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Failed to process image: ${msg}`);
       setIsProcessing(false);
     }
   };
