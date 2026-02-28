@@ -7,17 +7,36 @@ interface Props {
   onClose: () => void;
 }
 
-// Convert a File to a raw base64 string (strips the "data:...;base64," prefix).
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      resolve(dataUrl.split(',')[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+// Compress an image File using a canvas element and return a raw base64 string
+// (without the "data:...;base64," prefix).
+//
+// Why compress? Mobile camera photos are typically 5–10 MB. Base64-encoding adds
+// ~33 % overhead, so a 5 MB photo becomes ~6.7 MB of JSON — which exceeds
+// Vercel's 4.5 MB serverless-function body limit and causes the request to fail.
+// Resizing to ≤ 1600 px and re-encoding as JPEG at 85 % quality keeps the
+// payload well under 1 MB while retaining enough detail for GPT-4o-mini to read
+// label text clearly.
+async function compressToBase64(file: File): Promise<string> {
+  const MAX_DIM = 1600;
+  const QUALITY = 0.85;
+
+  // Load the image into a browser Image element so we can measure its dimensions
+  const bitmap = await createImageBitmap(file);
+
+  // Calculate the scaled dimensions, capping the longer side at MAX_DIM
+  const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width  * scale);
+  const h = Math.round(bitmap.height * scale);
+
+  // Draw at the new size onto an off-screen canvas, then export as JPEG
+  const canvas = document.createElement('canvas');
+  canvas.width  = w;
+  canvas.height = h;
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h);
+
+  // Convert the canvas to a base64 string (strip the data-URL prefix)
+  const dataUrl = canvas.toDataURL('image/jpeg', QUALITY);
+  return dataUrl.split(',')[1];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,7 +65,8 @@ export default function NutritionLabelCapture({ onResult, onClose }: Props) {
   const [pendingResult, setPendingResult] = useState<any | null>(null);
   const [editingName, setEditingName]     = useState('');
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef    = useRef<HTMLInputElement>(null); // live camera
+  const galleryInputRef = useRef<HTMLInputElement>(null); // photo gallery / file picker
 
   // Reset back to the capture state, discarding any pending result.
   const resetToCapture = () => {
@@ -72,8 +92,9 @@ export default function NutritionLabelCapture({ onResult, onClose }: Props) {
     reader.readAsDataURL(file);
 
     try {
-      const imageBase64 = await fileToBase64(file);
-      const mimeType    = file.type || 'image/jpeg';
+      // Compress before sending — canvas always outputs JPEG regardless of input format
+      const imageBase64 = await compressToBase64(file);
+      const mimeType    = 'image/jpeg';
 
       const res  = await fetch('/api/parse-nutrition-label', {
         method:  'POST',
@@ -226,29 +247,55 @@ export default function NutritionLabelCapture({ onResult, onClose }: Props) {
               </p>
             )}
 
-            {/* Camera capture button */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing}
-              className="w-full py-4 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center gap-3 font-medium transition-colors"
-            >
-              {/* Camera icon */}
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              {preview ? 'Retake Photo' : 'Take Photo of Label'}
-            </button>
+            {/* Two entry points: camera (live capture) and gallery (pick existing photo).
+                Both feed the same handleFileSelect → compress → API flow. */}
+            <div className="flex gap-2">
+              {/* Live camera — opens device camera directly */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessing}
+                className="flex-1 py-3.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-colors"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {preview ? 'Retake' : 'Camera'}
+              </button>
 
-            {/* Hidden file input wired to the device camera */}
+              {/* Gallery — lets the user pick an existing photo from their library */}
+              <button
+                type="button"
+                onClick={() => galleryInputRef.current?.click()}
+                disabled={isProcessing}
+                className="flex-1 py-3.5 border border-gray-300 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-colors"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Upload
+              </button>
+            </div>
+
+            {/* Camera file input — opens live camera via capture="environment" */}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
               capture="environment"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+
+            {/* Gallery file input — no capture attribute so the OS photo picker opens */}
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
               className="hidden"
               onChange={handleFileSelect}
             />
