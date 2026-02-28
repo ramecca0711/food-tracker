@@ -44,6 +44,12 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     sodium: 0,
   });
 
+  // How many days in each window passed the completeness threshold (for X/7, X/30 pills)
+  const [sevenDayValidCount,  setSevenDayValidCount]  = useState(0);
+  const [thirtyDayValidCount, setThirtyDayValidCount] = useState(0);
+  // date_key strings the user has explicitly marked "count anyway" despite low calories
+  const [incompleteOverrides, setIncompleteOverrides] = useState<Set<string>>(new Set());
+
   // Goals and biodiversity
   const [goals, setGoals] = useState<any>(null);
   const [todayBiodiversity, setTodayBiodiversity] = useState<any>(null);
@@ -148,6 +154,33 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     } catch (error) {
       console.error('Error deleting item:', error);
       alert('Failed to delete item');
+    }
+  };
+
+  // Toggle a day's "count anyway" override for the incomplete-day flag.
+  // Upserts a row in food_log_day_flags and updates local state immediately
+  // so the UI responds without waiting for a full data reload.
+  const toggleIncompleteOverride = async (dateKey: string, currentlyOverridden: boolean) => {
+    if (!userId) return;
+    try {
+      await supabase.from('food_log_day_flags').upsert({
+        user_id:           userId,
+        date_key:          dateKey,
+        ignore_incomplete: !currentlyOverridden,
+        updated_at:        new Date().toISOString(),
+      }, { onConflict: 'user_id,date_key' });
+
+      // Update local set immediately — averages recompute on next loadDashboardData call
+      setIncompleteOverrides(prev => {
+        const next = new Set(prev);
+        if (currentlyOverridden) next.delete(dateKey);
+        else next.add(dateKey);
+        return next;
+      });
+      // Reload so the average cards reflect the new override
+      loadDashboardData();
+    } catch (error) {
+      console.error('Error toggling day flag:', error);
     }
   };
 
@@ -330,6 +363,18 @@ export default function DashboardView({ userId }: { userId: string | null }) {
   // DATA LOADING
   // ============================================================================
 
+  // Load the user's "count anyway" overrides from food_log_day_flags.
+  // Called once on mount alongside loadDashboardData.
+  const loadDayFlags = async () => {
+    if (!userId) return;
+    const { data } = await supabase
+      .from('food_log_day_flags')
+      .select('date_key')
+      .eq('user_id', userId)
+      .eq('ignore_incomplete', true);
+    if (data) setIncompleteOverrides(new Set(data.map((r: any) => r.date_key)));
+  };
+
   const loadGoals = async () => {
     if (!userId) return;
 
@@ -356,7 +401,11 @@ export default function DashboardView({ userId }: { userId: string | null }) {
   const loadDashboardData = async () => {
     if (!userId) return;
     setIsLoading(true);
-    
+
+    // Days with fewer calories than this are considered incomplete and excluded
+    // from rolling averages. Can be made goal-relative in a future iteration.
+    const INCOMPLETE_CAL_THRESHOLD = 500;
+
     try {
       // Calculate date ranges
       const today = new Date();
@@ -460,7 +509,10 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             return {
               ...day,
               meals,
-              biodiversity: calculateBiodiversity(day.items)
+              biodiversity: calculateBiodiversity(day.items),
+              // Flag days whose calorie total is below the threshold — used to
+              // show the "⚠ Low data" badge and "Count anyway" button on DayCard.
+              isIncomplete: day.totals.calories < INCOMPLETE_CAL_THRESHOLD,
             };
           });
 
@@ -489,31 +541,38 @@ export default function DashboardView({ userId }: { userId: string | null }) {
           }
         }
 
-        // Calculate 7-day averages
+        // Calculate 7-day averages — only over days that meet the completeness
+        // threshold OR that the user has explicitly overridden to "count anyway".
         if (sortedDays.length > 0) {
-          const sums = sortedDays.reduce(
-            (acc, day) => ({
-              calories: acc.calories + day.totals.calories,
-              protein: acc.protein + day.totals.protein,
-              fat: acc.fat + day.totals.fat,
-              carbs: acc.carbs + day.totals.carbs,
-              fiber: acc.fiber + day.totals.fiber,
-              sugar: acc.sugar + day.totals.sugar,
-              sodium: acc.sodium + day.totals.sodium,
-            }),
-            { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 }
+          const validSevenDays = sortedDays.filter(d =>
+            d.totals.calories >= INCOMPLETE_CAL_THRESHOLD || incompleteOverrides.has(d.dateKey)
           );
+          setSevenDayValidCount(validSevenDays.length);
 
-          const numDays = sortedDays.length;
-          setSevenDayAvg({
-            calories: Math.round(sums.calories / numDays),
-            protein: Math.round((sums.protein / numDays) * 10) / 10,
-            fat: Math.round((sums.fat / numDays) * 10) / 10,
-            carbs: Math.round((sums.carbs / numDays) * 10) / 10,
-            fiber: Math.round((sums.fiber / numDays) * 10) / 10,
-            sugar: Math.round((sums.sugar / numDays) * 10) / 10,
-            sodium: Math.round(sums.sodium / numDays),
-          });
+          if (validSevenDays.length > 0) {
+            const sums = validSevenDays.reduce(
+              (acc, day) => ({
+                calories: acc.calories + day.totals.calories,
+                protein:  acc.protein  + day.totals.protein,
+                fat:      acc.fat      + day.totals.fat,
+                carbs:    acc.carbs    + day.totals.carbs,
+                fiber:    acc.fiber    + day.totals.fiber,
+                sugar:    acc.sugar    + day.totals.sugar,
+                sodium:   acc.sodium   + day.totals.sodium,
+              }),
+              { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 }
+            );
+            const numDays = validSevenDays.length;
+            setSevenDayAvg({
+              calories: Math.round(sums.calories / numDays),
+              protein:  Math.round((sums.protein  / numDays) * 10) / 10,
+              fat:      Math.round((sums.fat      / numDays) * 10) / 10,
+              carbs:    Math.round((sums.carbs    / numDays) * 10) / 10,
+              fiber:    Math.round((sums.fiber    / numDays) * 10) / 10,
+              sugar:    Math.round((sums.sugar    / numDays) * 10) / 10,
+              sodium:   Math.round(sums.sodium    / numDays),
+            });
+          }
         }
 
         setSevenDayBiodiversity(calculateBiodiversity(sevenDayData));
@@ -537,28 +596,37 @@ export default function DashboardView({ userId }: { userId: string | null }) {
           totals.sodium += item.sodium || 0;
         });
 
-        const numDays = dayTotals.size;
-        const sums = Array.from(dayTotals.values()).reduce(
+        // Filter incomplete days, same rule as 7-day — respect user overrides.
+        // Iterate entries() so we have the dateKey to check against overrides.
+        const validThirtyDayEntries = Array.from(dayTotals.entries())
+          .filter(([dateKey, d]) =>
+            d.calories >= INCOMPLETE_CAL_THRESHOLD || incompleteOverrides.has(dateKey)
+          )
+          .map(([, d]) => d);
+        setThirtyDayValidCount(validThirtyDayEntries.length);
+
+        const numDays = validThirtyDayEntries.length || 1; // guard against div/0
+        const sums = validThirtyDayEntries.reduce(
           (acc, day) => ({
             calories: acc.calories + day.calories,
-            protein: acc.protein + day.protein,
-            fat: acc.fat + day.fat,
-            carbs: acc.carbs + day.carbs,
-            fiber: acc.fiber + day.fiber,
-            sugar: acc.sugar + day.sugar,
-            sodium: acc.sodium + day.sodium,
+            protein:  acc.protein  + day.protein,
+            fat:      acc.fat      + day.fat,
+            carbs:    acc.carbs    + day.carbs,
+            fiber:    acc.fiber    + day.fiber,
+            sugar:    acc.sugar    + day.sugar,
+            sodium:   acc.sodium   + day.sodium,
           }),
           { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 }
         );
 
         setThirtyDayAvg({
           calories: Math.round(sums.calories / numDays),
-          protein: Math.round((sums.protein / numDays) * 10) / 10,
-          fat: Math.round((sums.fat / numDays) * 10) / 10,
-          carbs: Math.round((sums.carbs / numDays) * 10) / 10,
-          fiber: Math.round((sums.fiber / numDays) * 10) / 10,
-          sugar: Math.round((sums.sugar / numDays) * 10) / 10,
-          sodium: Math.round(sums.sodium / numDays),
+          protein:  Math.round((sums.protein  / numDays) * 10) / 10,
+          fat:      Math.round((sums.fat      / numDays) * 10) / 10,
+          carbs:    Math.round((sums.carbs    / numDays) * 10) / 10,
+          fiber:    Math.round((sums.fiber    / numDays) * 10) / 10,
+          sugar:    Math.round((sums.sugar    / numDays) * 10) / 10,
+          sodium:   Math.round(sums.sodium    / numDays),
         });
 
         setThirtyDayBiodiversity(calculateBiodiversity(thirtyDayData));
@@ -577,6 +645,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
   useEffect(() => {
     loadDashboardData();
     loadGoals();
+    loadDayFlags(); // load persisted "count anyway" overrides
     
     const handleFoodLogged = () => {
       loadDashboardData();
@@ -621,6 +690,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         goals={goals}
         expandedBioPeriods={expandedBioPeriods}
         onToggleBioPeriod={toggleBioPeriod}
+        sevenDayValidCount={sevenDayValidCount}
+        thirtyDayValidCount={thirtyDayValidCount}
       />
 
       {/* Food History */}
@@ -653,6 +724,11 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                   onManualAdd={openManualAddModal}
                   expandedMeals={dayExpandedMeals}
                   onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}
+                  isIncomplete={day.isIncomplete}
+                  isOverridden={incompleteOverrides.has(day.dateKey)}
+                  onToggleOverride={() =>
+                    toggleIncompleteOverride(day.dateKey, incompleteOverrides.has(day.dateKey))
+                  }
                 />
               );
             })}
