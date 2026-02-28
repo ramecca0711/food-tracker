@@ -19,23 +19,23 @@ type CustomFood = {
 interface ManualAddModalProps {
   isOpen: boolean;
   onClose: () => void;
-  savedMeals: any[];
+  savedMeals?: any[];
   onAddMeal: (meal: any) => void;
   onAddCustomMeal: (customMeal: any) => void;
   dateKey: string;
-  onSearchFoods: (query: string) => Promise<any[]>;
-  commonFoods: any[];
+  onSearchFoods?: (query: string) => Promise<any[]>;
+  commonFoods?: any[];
 }
 
 export default function ManualAddModal({
   isOpen,
   onClose,
-  savedMeals,
+  savedMeals = [],
   onAddMeal,
   onAddCustomMeal,
   dateKey,
   onSearchFoods,
-  commonFoods,
+  commonFoods = [],
 }: ManualAddModalProps) {
   // Step flow: choose meal type -> choose source -> build/add foods.
   const [mode, setMode] = useState<'mealType' | 'select' | 'custom' | 'saved'>('mealType');
@@ -194,7 +194,7 @@ export default function ManualAddModal({
 
     const timer = setTimeout(async () => {
       setSearching(true);
-      const results = await onSearchFoods(query);
+      const results = onSearchFoods ? await onSearchFoods(query) : [];
       setSearchResults(results || []);
       setSearching(false);
     }, 250);
@@ -374,7 +374,7 @@ export default function ManualAddModal({
 
               {showCommonFoods && (
                 <div className="flex flex-wrap gap-1.5">
-                  {commonFoods.slice(0, 5).map((food, idx) => (
+                  {(Array.isArray(commonFoods) ? commonFoods : []).slice(0, 5).map((food, idx) => (
                     <button
                       key={`manual-common-${food.food_name}-${idx}`}
                       type="button"
@@ -384,7 +384,7 @@ export default function ManualAddModal({
                       + {food.food_name}
                     </button>
                   ))}
-                  {commonFoods.length === 0 && (
+                  {(Array.isArray(commonFoods) ? commonFoods : []).length === 0 && (
                     <div className="text-xs text-gray-500">No common foods yet.</div>
                   )}
                 </div>
@@ -501,15 +501,16 @@ export default function ManualAddModal({
               Selected: {formatMealType(selectedMealType)}
             </div>
 
-            {savedMeals.length === 0 ? (
+            {(Array.isArray(savedMeals) ? savedMeals : []).length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-sm font-medium text-gray-900 mb-1">No saved meals yet</div>
                 <div className="text-xs text-gray-600">Go to Food Log to save meals for quick logging</div>
               </div>
             ) : (
               <div className="space-y-2">
-                {savedMeals.map((meal) => {
-                  const totalCals = meal.items.reduce((sum: number, item: any) => sum + (parseInt(item.calories) || 0), 0);
+                {(Array.isArray(savedMeals) ? savedMeals : []).map((meal) => {
+                  const items = Array.isArray(meal.items) ? meal.items : [];
+                  const totalCals = items.reduce((sum: number, item: any) => sum + (parseInt(item.calories) || 0), 0);
                   return (
                     <div
                       key={meal.id}
