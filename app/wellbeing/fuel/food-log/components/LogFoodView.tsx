@@ -899,6 +899,21 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setIsSavedFoodSearching(false);
   };
 
+  useEffect(() => {
+    const query = savedFoodSearch.trim();
+    if (!query) {
+      setSavedFoodSearchResults([]);
+      setIsSavedFoodSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runSavedFoodsSearch();
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [savedFoodSearch]);
+
   const toggleMealAddFood = (mealIndex: number) => {
     const next = new Set(mealAddFoodOpen);
     if (next.has(mealIndex)) next.delete(mealIndex);
