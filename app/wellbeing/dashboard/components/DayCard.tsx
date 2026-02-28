@@ -45,6 +45,8 @@ export default function DayCard({
 }: DayCardProps) {
   
   const [isBioExpanded, setIsBioExpanded] = useState(false);
+  const mealTypes: Array<'breakfast' | 'lunch' | 'dinner' | 'snack'> = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const mealsByType = new Map<string, any>((day.meals || []).map((meal: any) => [meal.meal_type, meal]));
 
   const formatDate = (date: Date) => {
     const today = new Date();
@@ -294,23 +296,32 @@ export default function DayCard({
 
           {/* Meals */}
           <div className="space-y-2">
-            {day.meals.map((meal: any) => (
+            {mealTypes.map((mealType) => {
+              const meal = mealsByType.get(mealType) || {
+                meal_type: mealType,
+                items: [],
+                totals: { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 },
+                earliest_time: day.date.toISOString(),
+              };
+
+              return (
               <MealCard
-                key={meal.meal_type}
+                key={mealType}
                 meal={meal}
-                mealType={meal.meal_type}
+                mealType={mealType}
                 dayDate={day.date}
-                isExpanded={expandedMeals.has(meal.meal_type)}
-                onToggle={() => onToggleMeal(meal.meal_type)}
+                isExpanded={expandedMeals.has(mealType)}
+                onToggle={() => onToggleMeal(mealType)}
                 onEditItem={onEditItem}
                 onDeleteItem={onDeleteItem}
                 onDeleteMeal={onDeleteMeal}
                 onMoveItemToMeal={onMoveItemToMeal}
                 onSearchFoods={onSearchFoods}
-                onAddFood={(food) => onAddFoodToMeal(day.date, meal.meal_type, food)}
+                onAddFood={(food) => onAddFoodToMeal(day.date, mealType, food)}
                 quickAddFoods={quickAddFoods}
               />
-            ))}
+            );
+            })}
           </div>
         </div>
       )}

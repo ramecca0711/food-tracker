@@ -571,32 +571,46 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     try {
       const mealGroupId = crypto.randomUUID();
       const selectedDateTime = new Date(manualAddDate + 'T12:00:00');
-      
+
+      const items = Array.isArray(customMeal.items) && customMeal.items.length > 0
+        ? customMeal.items
+        : [customMeal];
+
+      // Blank meal is allowed in the UI so users can drag/drop later.
+      // If no food rows exist yet, skip insert and just refresh the view.
+      if (!items[0]?.food_name) {
+        setShowManualAddModal(false);
+        loadDashboardData();
+        return;
+      }
+
+      const rows = items.map((item: any) => ({
+        user_id: userId,
+        food_name: item.food_name,
+        quantity: item.quantity,
+        calories: item.calories,
+        protein: item.protein,
+        fat: item.fat,
+        carbs: item.carbs,
+        fiber: item.fiber,
+        sugar: item.sugar,
+        sodium: item.sodium,
+        meal_type: customMeal.meal_type,
+        meal_group_id: mealGroupId,
+        notes: customMeal.notes,
+        eating_out: customMeal.eating_out,
+        categories: [],
+        whole_food_ingredients: [],
+        logged_at: selectedDateTime.toISOString(),
+      }));
+
       const { error } = await supabase
         .from('food_items')
-        .insert({
-          user_id: userId,
-          food_name: customMeal.food_name,
-          quantity: customMeal.quantity,
-          calories: customMeal.calories,
-          protein: customMeal.protein,
-          fat: customMeal.fat,
-          carbs: customMeal.carbs,
-          fiber: customMeal.fiber,
-          sugar: customMeal.sugar,
-          sodium: customMeal.sodium,
-          meal_type: customMeal.meal_type,
-          meal_group_id: mealGroupId,
-          notes: customMeal.notes,
-          eating_out: customMeal.eating_out,
-          categories: [],
-          whole_food_ingredients: [],
-          logged_at: selectedDateTime.toISOString(),
-        });
+        .insert(rows);
 
       if (error) throw error;
 
-      alert(`✅ Added "${customMeal.food_name}"!`);
+      alert(`✅ Added ${rows.length} ${rows.length === 1 ? 'item' : 'items'}!`);
       setShowManualAddModal(false);
       loadDashboardData();
     } catch (error) {

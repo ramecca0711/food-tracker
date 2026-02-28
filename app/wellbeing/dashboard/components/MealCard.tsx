@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import FoodItemCard from './FoodItemCard';
 
 interface MealCardProps {
@@ -65,16 +65,25 @@ export default function MealCard({
     return names.join(', ');
   };
 
-  const runSearch = async () => {
-    if (!searchText.trim()) {
+  useEffect(() => {
+    if (!showAddFood) return;
+
+    const query = searchText.trim();
+    if (!query) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
-    setSearching(true);
-    const results = await onSearchFoods(searchText);
-    setSearchResults(results);
-    setSearching(false);
-  };
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const results = await onSearchFoods(query);
+      setSearchResults(results);
+      setSearching(false);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchText, showAddFood, onSearchFoods]);
 
   return (
     <div
@@ -215,7 +224,7 @@ export default function MealCard({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+                <div>
                   <input
                     type="text"
                     value={searchText}
@@ -223,13 +232,6 @@ export default function MealCard({
                     placeholder="Search your food history..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
                   />
-                  <button
-                    type="button"
-                    onClick={runSearch}
-                    className="px-3 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
-                  >
-                    Search
-                  </button>
                 </div>
 
                 {searching && <div className="text-xs text-gray-500">Searching...</div>}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import BarcodeScanner from '@/app/components/BarcodeScanner';
 import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
@@ -80,6 +80,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const [mealFoodSearch, setMealFoodSearch]         = useState<Map<number, string>>(new Map());
   const [mealFoodSearchResults, setMealFoodSearchResults] = useState<Map<number, FoodTemplate[]>>(new Map());
   const [mealFoodSearching, setMealFoodSearching]   = useState<Map<number, boolean>>(new Map());
+  const mealSearchDebounceTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const [draggingItem, setDraggingItem] = useState<{ mealIndex: number; itemIndex: number } | null>(null);
   const [dragOverMeal, setDragOverMeal] = useState<number | null>(null);
 
@@ -1024,10 +1025,30 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     const next = new Map(mealFoodSearch);
     next.set(mealIndex, value);
     setMealFoodSearch(next);
+
+    const existingTimer = mealSearchDebounceTimers.current.get(mealIndex);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    const query = value.trim();
+    if (!query) {
+      const nextResults = new Map(mealFoodSearchResults);
+      nextResults.set(mealIndex, []);
+      setMealFoodSearchResults(nextResults);
+
+      const nextLoading = new Map(mealFoodSearching);
+      nextLoading.set(mealIndex, false);
+      setMealFoodSearching(nextLoading);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runMealFoodSearch(mealIndex, query);
+    }, 250);
+    mealSearchDebounceTimers.current.set(mealIndex, timer);
   };
 
-  const runMealFoodSearch = async (mealIndex: number) => {
-    const query = mealFoodSearch.get(mealIndex)?.trim() || '';
+  const runMealFoodSearch = async (mealIndex: number, queryOverride?: string) => {
+    const query = queryOverride ?? mealFoodSearch.get(mealIndex)?.trim() ?? '';
     if (!query) {
       const nextResults = new Map(mealFoodSearchResults);
       nextResults.set(mealIndex, []);
@@ -1493,7 +1514,7 @@ Examples:
 
                       {mealAddFoodOpen.has(mealIndex) && (
                         <div className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+                          <div>
                             <input
                               type="text"
                               value={mealFoodSearch.get(mealIndex) || ''}
@@ -1501,13 +1522,6 @@ Examples:
                               placeholder="Search your food history..."
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
                             />
-                            <button
-                              type="button"
-                              onClick={() => runMealFoodSearch(mealIndex)}
-                              className="px-3 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
-                            >
-                              Search
-                            </button>
                           </div>
 
                           <div>
