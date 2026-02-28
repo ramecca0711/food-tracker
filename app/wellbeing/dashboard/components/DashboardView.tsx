@@ -404,7 +404,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
 
     // Days with fewer calories than this are considered incomplete and excluded
     // from rolling averages. Can be made goal-relative in a future iteration.
-    const INCOMPLETE_CAL_THRESHOLD = 500;
+    const INCOMPLETE_CAL_THRESHOLD = 1200;
 
     try {
       // Calculate date ranges
