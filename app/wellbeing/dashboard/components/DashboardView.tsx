@@ -118,14 +118,21 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         .from('food_items')
         .update({
           food_name: updates.food_name,
-          quantity: updates.quantity,
-          calories: parseInt(updates.calories) || 0,
-          protein: parseFloat(updates.protein) || 0,
-          fat: parseFloat(updates.fat) || 0,
-          carbs: parseFloat(updates.carbs) || 0,
-          fiber: parseFloat(updates.fiber) || 0,
-          sugar: parseFloat(updates.sugar) || 0,
-          sodium: parseInt(updates.sodium) || 0,
+          quantity:  updates.quantity,
+          calories:  parseInt(updates.calories)   || 0,
+          protein:   parseFloat(updates.protein)  || 0,
+          fat:       parseFloat(updates.fat)      || 0,
+          carbs:     parseFloat(updates.carbs)    || 0,
+          fiber:     parseFloat(updates.fiber)    || 0,
+          sugar:     parseFloat(updates.sugar)    || 0,
+          sodium:    parseInt(updates.sodium)     || 0,
+          // Persist provenance fields when present — a scan result carries
+          // source / categories / whole_food_ingredients from the scanner component,
+          // so they need to be written back so the badge and biodiversity scoring
+          // reflect the corrected data source.
+          source:                 updates.source                 ?? null,
+          categories:             updates.categories             ?? [],
+          whole_food_ingredients: updates.whole_food_ingredients ?? [],
         })
         .eq('id', itemId)
         .eq('user_id', userId);

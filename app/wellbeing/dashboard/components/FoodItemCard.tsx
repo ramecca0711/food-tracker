@@ -2,43 +2,89 @@
 
 import { useState } from 'react';
 import SourceBadge from '@/app/components/SourceBadge';
+import BarcodeScanner from '@/app/components/BarcodeScanner';
+import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
 
 interface FoodItemCardProps {
   item: any;
+  // Updates now include source, categories, whole_food_ingredients so a scan
+  // result fully replaces the item's provenance, not just the macro numbers.
   onEdit: (itemId: string, updates: any) => void;
   onDelete: (itemId: string) => void;
 }
 
 export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardProps) {
   const [isEditing, setIsEditing] = useState(false);
+
+  // Edit form values — initialised from the item and updated on every keystroke
+  // or scan. Source / categories / whole_food_ingredients are carried through
+  // so they are preserved on a plain manual edit and replaced on a scan.
   const [editValues, setEditValues] = useState({
-    food_name: item.food_name,
-    quantity: item.quantity,
-    calories: item.calories,
-    protein: item.protein,
-    fat: item.fat,
-    carbs: item.carbs,
-    fiber: item.fiber,
-    sugar: item.sugar,
-    sodium: item.sodium,
+    food_name:              item.food_name,
+    quantity:               item.quantity,
+    calories:               item.calories,
+    protein:                item.protein,
+    fat:                    item.fat,
+    carbs:                  item.carbs,
+    fiber:                  item.fiber,
+    sugar:                  item.sugar,
+    sodium:                 item.sodium,
+    source:                 item.source               ?? null,
+    categories:             item.categories            ?? [],
+    whole_food_ingredients: item.whole_food_ingredients ?? [],
   });
 
+  // Scanner modal visibility — only rendered while editing
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [showLabelCapture,   setShowLabelCapture]   = useState(false);
+
+  // ── Scan result handler ─────────────────────────────────────────────────────
+  // Called by BarcodeScanner or NutritionLabelCapture after the user confirms
+  // the review step.  Autofills all edit fields with the scanned values and
+  // ensures the edit panel is open so the user can see (and adjust) them.
+  const handleScanResult = (scanData: any) => {
+    setEditValues({
+      food_name:              String(scanData.food_name  || editValues.food_name),
+      quantity:               String(scanData.quantity   || editValues.quantity),
+      calories:               Number(scanData.calories)  || 0,
+      protein:                Number(scanData.protein)   || 0,
+      fat:                    Number(scanData.fat)       || 0,
+      carbs:                  Number(scanData.carbs)     || 0,
+      fiber:                  Number(scanData.fiber)     || 0,
+      sugar:                  Number(scanData.sugar)     || 0,
+      sodium:                 Number(scanData.sodium)    || 0,
+      source:                 scanData.source            ?? null,
+      categories:             scanData.categories            ?? [],
+      whole_food_ingredients: scanData.whole_food_ingredients ?? [],
+    });
+    // Make the edit panel visible so the user sees the autofilled values
+    setIsEditing(true);
+    setShowBarcodeScanner(false);
+    setShowLabelCapture(false);
+  };
+
   const handleSave = () => {
+    // Pass the full editValues (including source, categories, whole_food_ingredients)
+    // so the parent can write all fields back to the database.
     onEdit(item.id, editValues);
     setIsEditing(false);
   };
 
   const handleCancel = () => {
+    // Reset all fields to the original item values, discarding any edits / scan
     setEditValues({
-      food_name: item.food_name,
-      quantity: item.quantity,
-      calories: item.calories,
-      protein: item.protein,
-      fat: item.fat,
-      carbs: item.carbs,
-      fiber: item.fiber,
-      sugar: item.sugar,
-      sodium: item.sodium,
+      food_name:              item.food_name,
+      quantity:               item.quantity,
+      calories:               item.calories,
+      protein:                item.protein,
+      fat:                    item.fat,
+      carbs:                  item.carbs,
+      fiber:                  item.fiber,
+      sugar:                  item.sugar,
+      sodium:                 item.sodium,
+      source:                 item.source               ?? null,
+      categories:             item.categories            ?? [],
+      whole_food_ingredients: item.whole_food_ingredients ?? [],
     });
     setIsEditing(false);
   };
@@ -151,7 +197,41 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
             </div>
           </div>
 
-          {/* Buttons */}
+          {/* Scan shortcuts — autofill all macro fields from a barcode or label photo */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Autofill from scan (replaces all values)
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBarcodeScanner(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                {/* Barcode icon */}
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 6h2v12H4V6zm3 0h1v12H7V6zm2 0h2v12H9V6zm3 0h1v12h-1V6zm2 0h2v12h-2V6zm3 0h1v12h-1V6z" />
+                </svg>
+                Scan Barcode
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLabelCapture(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 border border-gray-300 rounded text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                {/* Camera icon */}
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Scan Label
+              </button>
+            </div>
+          </div>
+
+          {/* Save / Cancel */}
           <div className="flex gap-2">
             <button
               onClick={handleSave}
@@ -202,7 +282,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
               </button>
             </div>
           </div>
-          
+
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-600">
             <span><span className="font-medium text-gray-700">P:</span> {item.protein}g</span>
             <span><span className="font-medium text-gray-700">F:</span> {item.fat}g</span>
@@ -239,6 +319,20 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
             </div>
           )}
         </>
+      )}
+
+      {/* Scanner modals — rendered outside the edit form so they overlay the full page */}
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onResult={handleScanResult}
+          onClose={() => setShowBarcodeScanner(false)}
+        />
+      )}
+      {showLabelCapture && (
+        <NutritionLabelCapture
+          onResult={handleScanResult}
+          onClose={() => setShowLabelCapture(false)}
+        />
       )}
     </div>
   );

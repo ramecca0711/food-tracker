@@ -266,10 +266,19 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       console.log('✅ Saved all meals to database!');
 
       // ── 3. Write cache candidates to master_food_database ──────────────────
-      // cache_candidates are foods discovered via OpenFoodFacts or AI during parsing.
-      // We defer writing them until the user explicitly confirms the log entry so we
-      // don't pollute the database with food data from sessions the user abandoned.
-      const candidates: any[] = parsedData?.cache_candidates ?? [];
+      // Two sources of candidates:
+      //   a) parsedData.cache_candidates — foods from OpenFoodFacts or AI during
+      //      text parsing (deferred write to avoid DB pollution on abandoned sessions).
+      //   b) per-item cache_candidates embedded in barcode-scanned items — per-100g
+      //      OFF data returned by /api/lookup-barcode so the same product hits the
+      //      local cache on future lookups instead of querying OFF again.
+      const parsesCandidates: any[] = parsedData?.cache_candidates ?? [];
+      const scanCandidates: any[] = editingMeals
+        .flatMap((m: any) => m.items as any[])
+        .map((item: any) => item.cache_candidate)
+        .filter(Boolean);
+
+      const candidates = [...parsesCandidates, ...scanCandidates];
       if (candidates.length > 0) {
         const { error: cacheError } = await supabase
           .from('master_food_database')
@@ -345,6 +354,10 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // Scanned data is always treated as authoritative — source is 'barcode' or
   // 'label_photo', provided_by_user: true — so the lookup chain will never
   // override it when the item eventually reaches parse-food or get-food-macros.
+  //
+  // cache_candidate (barcode only): per-100g OFF data to write to
+  // master_food_database on confirm, so the same product hits the local cache
+  // on future lookups instead of querying OFF again.
   const handleScanResult = (scanData: any) => {
     const scannedItem = {
       food_name:              String(scanData.food_name  || 'Scanned item'),
@@ -361,11 +374,14 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       source:                 scanData.source, // 'barcode' or 'label_photo'
       provided_by_user:       true,            // treated as user-verified fact
       unverified:             false,
+      // Carry the per-100g cache candidate so handleConfirm can write it to
+      // master_food_database. Only present for barcode scans that had 100g data.
+      cache_candidate:        scanData.cache_candidate ?? null,
     };
 
     if (scanTargetMeal !== null && scanTargetItem !== null) {
-      // Replace macros on an existing parsed item, preserving food_name
-      // only if the scan didn't return one
+      // Replace macros on an existing parsed item, preserving the expanded state
+      // so the user can immediately see the autofilled fields.
       const updated = [...editingMeals];
       updated[scanTargetMeal].items[scanTargetItem] = {
         ...updated[scanTargetMeal].items[scanTargetItem],
@@ -374,6 +390,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       setEditingMeals(updated);
       setScanTargetMeal(null);
       setScanTargetItem(null);
+      // The item-edit panel was already expanded — no need to change expandedItems.
     } else {
       // New scan: auto-assign a meal type based on the current time of day
       const hour = new Date().getHours();
@@ -387,11 +404,21 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         const updated = [...editingMeals];
         updated[0].items = [...(updated[0].items || []), scannedItem];
         setEditingMeals(updated);
+
+        // Auto-expand the newly appended item so the user sees all fields filled in
+        const newItemIndex = updated[0].items.length - 1;
+        const newExpanded = new Map(expandedItems);
+        if (!newExpanded.has('0')) newExpanded.set('0', new Set());
+        newExpanded.get('0')!.add(newItemIndex);
+        setExpandedItems(newExpanded);
       } else {
         // Nothing parsed yet — bootstrap a new meal from this scan alone
         const newMeal = { meal_type, confidence: 1.0, items: [scannedItem] };
         setEditingMeals([newMeal]);
         setParsedData({ meals: [newMeal], cache_candidates: [] });
+
+        // Auto-expand the first (and only) item so all fields are immediately visible
+        setExpandedItems(new Map([['0', new Set([0])]]));
       }
     }
 

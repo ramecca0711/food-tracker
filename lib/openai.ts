@@ -1,8 +1,11 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Always create the client inside functions — never at module level.
+// Module-level instantiation throws at build time when env vars are absent
+// during Next.js static analysis (next build).
+function getOpenAI(): OpenAI {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -172,7 +175,7 @@ function normalizeParsedFood(raw: any): ParsedFood {
 export async function parseFood(description: string): Promise<ParsedFood> {
   const currentHour = new Date().getHours();
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
     top_p: 1,
