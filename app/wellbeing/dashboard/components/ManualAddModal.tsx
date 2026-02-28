@@ -374,7 +374,7 @@ export default function ManualAddModal({
 
               {showCommonFoods && (
                 <div className="flex flex-wrap gap-1.5">
-                  {(Array.isArray(commonFoods) ? commonFoods : []).slice(0, 5).map((food, idx) => (
+                  {(Array.isArray(commonFoods) ? commonFoods : []).filter(Boolean).slice(0, 5).map((food, idx) => (
                     <button
                       key={`manual-common-${food.food_name}-${idx}`}
                       type="button"
@@ -508,19 +508,19 @@ export default function ManualAddModal({
               </div>
             ) : (
               <div className="space-y-2">
-                {(Array.isArray(savedMeals) ? savedMeals : []).map((meal) => {
+                {(Array.isArray(savedMeals) ? savedMeals : []).filter(Boolean).map((meal) => {
                   const items = Array.isArray(meal.items) ? meal.items : [];
                   const totalCals = items.reduce((sum: number, item: any) => sum + (parseInt(item.calories) || 0), 0);
                   return (
                     <div
-                      key={meal.id}
+                      key={meal.id || `${meal.meal_name || 'saved'}-${totalCals}`}
                       className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer"
                       onClick={() => {
                         onAddMeal({ ...meal, meal_type: selectedMealType });
                         handleClose();
                       }}
                     >
-                      <div className="font-semibold text-gray-900">{meal.meal_name}</div>
+                      <div className="font-semibold text-gray-900">{meal.meal_name || 'Saved meal'}</div>
                       <div className="text-xs text-gray-500 mt-1">
                         {meal.items.length} items · {totalCals} cal
                       </div>
