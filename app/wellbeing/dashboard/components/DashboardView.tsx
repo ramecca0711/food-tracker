@@ -83,6 +83,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [expandedMeals, setExpandedMeals] = useState<Map<string, Set<string>>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
+  const [quickAddFoods, setQuickAddFoods] = useState<FoodSearchResult[]>([]);
   
   // Manual add modal
   const [showManualAddModal, setShowManualAddModal] = useState(false);
@@ -622,6 +623,44 @@ export default function DashboardView({ userId }: { userId: string | null }) {
       const allHistoryDays = buildDailyData(historyData ?? [], INCOMPLETE_CAL_THRESHOLD);
       setDailyData(allHistoryDays);
 
+      if (historyData && historyData.length > 0) {
+        const grouped = new Map<string, { row: any; count: number; lastLoggedAt: string }>();
+        historyData.forEach((row: any) => {
+          const key = String(row.food_name || '').trim().toLowerCase();
+          if (!key) return;
+          if (!grouped.has(key)) {
+            grouped.set(key, { row, count: 1, lastLoggedAt: row.logged_at });
+          } else {
+            const existing = grouped.get(key)!;
+            existing.count += 1;
+          }
+        });
+
+        const topFoods = Array.from(grouped.values())
+          .sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return new Date(b.lastLoggedAt).getTime() - new Date(a.lastLoggedAt).getTime();
+          })
+          .slice(0, 5)
+          .map(({ row }) => ({
+            food_name: row.food_name,
+            quantity: row.quantity || '1 serving',
+            calories: Number(row.calories) || 0,
+            protein: Number(row.protein) || 0,
+            fat: Number(row.fat) || 0,
+            carbs: Number(row.carbs) || 0,
+            fiber: Number(row.fiber) || 0,
+            sugar: Number(row.sugar) || 0,
+            sodium: Number(row.sodium) || 0,
+            categories: row.categories || [],
+            whole_food_ingredients: row.whole_food_ingredients || [],
+            source: row.source || 'cache',
+          }));
+        setQuickAddFoods(topFoods);
+      } else {
+        setQuickAddFoods([]);
+      }
+
       // Set today's stats from the most recent day if it is today.
       if (allHistoryDays.length > 0) {
         const firstDay = allHistoryDays[0];
@@ -853,6 +892,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                       onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}
                       onSearchFoods={searchFoods}
                       onAddFoodToMeal={addFoodToMeal}
+                      quickAddFoods={quickAddFoods}
                       isIncomplete={day.isIncomplete}
                       isOverridden={incompleteOverrides.has(day.dateKey)}
                       onToggleOverride={() =>

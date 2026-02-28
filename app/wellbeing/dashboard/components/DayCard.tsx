@@ -15,6 +15,7 @@ interface DayCardProps {
   onToggleMeal: (mealType: string) => void;
   onSearchFoods: (query: string) => Promise<any[]>;
   onAddFoodToMeal: (dayDate: Date, mealType: string, food: any) => void;
+  quickAddFoods: any[];
   // Incomplete-day flagging — days below 500 cal are excluded from averages
   isIncomplete?:     boolean;
   isOverridden?:     boolean;   // user clicked "Count anyway" to include this day
@@ -33,6 +34,7 @@ export default function DayCard({
   onToggleMeal,
   onSearchFoods,
   onAddFoodToMeal,
+  quickAddFoods,
   isIncomplete,
   isOverridden,
   onToggleOverride,
@@ -299,6 +301,7 @@ export default function DayCard({
                 onDeleteItem={onDeleteItem}
                 onSearchFoods={onSearchFoods}
                 onAddFood={(food) => onAddFoodToMeal(day.date, meal.meal_type, food)}
+                quickAddFoods={quickAddFoods}
               />
             ))}
           </div>

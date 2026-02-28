@@ -12,6 +12,7 @@ interface MealCardProps {
   onDeleteItem: (itemId: string) => void;
   onSearchFoods: (query: string) => Promise<any[]>;
   onAddFood: (food: any) => void;
+  quickAddFoods: any[];
 }
 
 export default function MealCard({
@@ -23,6 +24,7 @@ export default function MealCard({
   onDeleteItem,
   onSearchFoods,
   onAddFood,
+  quickAddFoods,
 }: MealCardProps) {
   const [showAddFood, setShowAddFood] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -127,6 +129,24 @@ export default function MealCard({
 
             {showAddFood && (
               <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                {quickAddFoods.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Top 5 foods</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {quickAddFoods.slice(0, 5).map((food, idx) => (
+                        <button
+                          key={`quick-${meal.meal_type}-${idx}-${food.food_name}`}
+                          type="button"
+                          onClick={() => onAddFood(food)}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 text-gray-700"
+                        >
+                          + {food.food_name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
                   <input
                     type="text"
