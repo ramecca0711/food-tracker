@@ -6,6 +6,32 @@ import BarcodeScanner from '@/app/components/BarcodeScanner';
 import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
 import SourceBadge from '@/app/components/SourceBadge';
 
+type FoodTemplate = {
+  food_name: string;
+  serving_size: string;
+  amount: number;
+  quantity: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
+  base_calories: number;
+  base_protein: number;
+  base_fat: number;
+  base_carbs: number;
+  base_fiber: number;
+  base_sugar: number;
+  base_sodium: number;
+  categories: string[];
+  whole_food_ingredients: string[];
+  source?: string | null;
+  usageCount?: number;
+  lastLoggedAt?: string | null;
+};
+
 export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
   // STATE MANAGEMENT
@@ -27,9 +53,15 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   const [savedMeals, setSavedMeals] = useState<any[]>([]);
   const [isLoadingSavedMeals, setIsLoadingSavedMeals] = useState(true);
+  const [savedFoods, setSavedFoods] = useState<FoodTemplate[]>([]);
+  const [isLoadingSavedFoods, setIsLoadingSavedFoods] = useState(true);
   const [editingSavedMeal, setEditingSavedMeal] = useState<string | null>(null);
   const [editingSavedMealData, setEditingSavedMealData] = useState<any>(null);
   const [showSavedMeals, setShowSavedMeals] = useState(false);
+  const [showSavedFoods, setShowSavedFoods] = useState(false);
+  const [savedFoodSearch, setSavedFoodSearch] = useState('');
+  const [savedFoodSearchResults, setSavedFoodSearchResults] = useState<FoodTemplate[]>([]);
+  const [isSavedFoodSearching, setIsSavedFoodSearching] = useState(false);
 
   const [showSaveMealModal, setShowSaveMealModal] = useState(false);
   const [mealToSave, setMealToSave] = useState<any>(null);
@@ -44,6 +76,10 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const [showLabelCapture, setShowLabelCapture]     = useState(false);
   const [scanTargetMeal, setScanTargetMeal]         = useState<number | null>(null);
   const [scanTargetItem, setScanTargetItem]         = useState<number | null>(null);
+  const [mealAddFoodOpen, setMealAddFoodOpen]       = useState<Set<number>>(new Set());
+  const [mealFoodSearch, setMealFoodSearch]         = useState<Map<number, string>>(new Map());
+  const [mealFoodSearchResults, setMealFoodSearchResults] = useState<Map<number, FoodTemplate[]>>(new Map());
+  const [mealFoodSearching, setMealFoodSearching]   = useState<Map<number, boolean>>(new Map());
 
   const toSafeAmount = (raw: any) => {
     const n = parseFloat(String(raw));
@@ -114,12 +150,87 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       items: (meal.items || []).map((item: any) => normalizeItemForEditing(item)),
     }));
 
+  const toFoodTemplate = (row: any): FoodTemplate =>
+    normalizeItemForEditing({
+      food_name: row.food_name,
+      serving_size: row.serving_size ?? null,
+      amount: row.amount ?? null,
+      quantity: row.quantity,
+      calories: row.calories,
+      protein: row.protein,
+      fat: row.fat,
+      carbs: row.carbs,
+      fiber: row.fiber,
+      sugar: row.sugar,
+      sodium: row.sodium,
+      categories: row.categories || [],
+      whole_food_ingredients: row.whole_food_ingredients || [],
+      source: row.source ?? 'cache',
+    });
+
+  const inferMealTypeForNow = (): 'breakfast' | 'lunch' | 'dinner' | 'snack' => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 10) return 'breakfast';
+    if (hour >= 11 && hour < 15) return 'lunch';
+    if (hour >= 17 && hour < 21) return 'dinner';
+    return 'snack';
+  };
+
+  const addFoodTemplateToMeal = (template: FoodTemplate, mealIndex?: number) => {
+    const item = normalizeItemForEditing({ ...template, unverified: false, provided_by_user: true });
+    const updatedMeals = [...editingMeals];
+    const targetMealIndex = typeof mealIndex === 'number' ? mealIndex : 0;
+
+    if (updatedMeals.length === 0) {
+      const newMeal = { meal_type: inferMealTypeForNow(), confidence: 1.0, items: [item] };
+      setEditingMeals([newMeal]);
+      setParsedData({ meals: [newMeal], cache_candidates: [] });
+      setExpandedItems(new Map([['0', new Set([0])]]));
+      return;
+    }
+
+    if (!updatedMeals[targetMealIndex]) return;
+    updatedMeals[targetMealIndex].items = [...(updatedMeals[targetMealIndex].items || []), item];
+    setEditingMeals(updatedMeals);
+
+    const newExpanded = new Map(expandedItems);
+    const key = String(targetMealIndex);
+    const newIndex = updatedMeals[targetMealIndex].items.length - 1;
+    if (!newExpanded.has(key)) newExpanded.set(key, new Set());
+    newExpanded.get(key)!.add(newIndex);
+    setExpandedItems(newExpanded);
+  };
+
+  const searchFoodsInDb = async (query: string) => {
+    if (!userId || !query.trim()) return [] as FoodTemplate[];
+
+    const { data, error } = await supabase
+      .from('food_items')
+      .select('food_name, quantity, calories, protein, fat, carbs, fiber, sugar, sodium, categories, whole_food_ingredients, source, logged_at')
+      .eq('user_id', userId)
+      .ilike('food_name', `%${query.trim()}%`)
+      .order('logged_at', { ascending: false })
+      .limit(250);
+
+    if (error || !data) return [] as FoodTemplate[];
+
+    const deduped = new Map<string, any>();
+    for (const row of data) {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key || deduped.has(key)) continue;
+      deduped.set(key, row);
+    }
+
+    return Array.from(deduped.values()).map(toFoodTemplate).slice(0, 10);
+  };
+
   // ============================================================================
   // LOAD SAVED MEALS
   // ============================================================================
 
   useEffect(() => {
     loadSavedMeals();
+    loadSavedFoods();
   }, [userId]);
 
   const loadSavedMeals = async () => {
@@ -138,6 +249,56 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
     if (data) setSavedMeals(data);
     setIsLoadingSavedMeals(false);
+  };
+
+  const loadSavedFoods = async () => {
+    if (!userId) {
+      setSavedFoods([]);
+      setIsLoadingSavedFoods(false);
+      return;
+    }
+
+    setIsLoadingSavedFoods(true);
+
+    const { data, error } = await supabase
+      .from('food_items')
+      .select('food_name, quantity, calories, protein, fat, carbs, fiber, sugar, sodium, categories, whole_food_ingredients, source, logged_at')
+      .eq('user_id', userId)
+      .order('logged_at', { ascending: false })
+      .limit(2000);
+
+    if (error || !data) {
+      setSavedFoods([]);
+      setIsLoadingSavedFoods(false);
+      return;
+    }
+
+    const grouped = new Map<string, { row: any; count: number; lastLoggedAt: string }>();
+    data.forEach((row: any) => {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key) return;
+      if (!grouped.has(key)) {
+        grouped.set(key, { row, count: 1, lastLoggedAt: row.logged_at });
+      } else {
+        const existing = grouped.get(key)!;
+        existing.count += 1;
+      }
+    });
+
+    const frequent = Array.from(grouped.values())
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return new Date(b.lastLoggedAt).getTime() - new Date(a.lastLoggedAt).getTime();
+      })
+      .slice(0, 10)
+      .map(({ row, count, lastLoggedAt }) => ({
+        ...toFoodTemplate(row),
+        usageCount: count,
+        lastLoggedAt,
+      }));
+
+    setSavedFoods(frequent);
+    setIsLoadingSavedFoods(false);
   };
 
   // ============================================================================
@@ -726,6 +887,53 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     return `${emoji} ${type.charAt(0).toUpperCase() + type.slice(1)}`;
   };
 
+  const runSavedFoodsSearch = async () => {
+    const query = savedFoodSearch.trim();
+    if (!query) {
+      setSavedFoodSearchResults([]);
+      return;
+    }
+    setIsSavedFoodSearching(true);
+    const results = await searchFoodsInDb(query);
+    setSavedFoodSearchResults(results);
+    setIsSavedFoodSearching(false);
+  };
+
+  const toggleMealAddFood = (mealIndex: number) => {
+    const next = new Set(mealAddFoodOpen);
+    if (next.has(mealIndex)) next.delete(mealIndex);
+    else next.add(mealIndex);
+    setMealAddFoodOpen(next);
+  };
+
+  const setMealSearchText = (mealIndex: number, value: string) => {
+    const next = new Map(mealFoodSearch);
+    next.set(mealIndex, value);
+    setMealFoodSearch(next);
+  };
+
+  const runMealFoodSearch = async (mealIndex: number) => {
+    const query = mealFoodSearch.get(mealIndex)?.trim() || '';
+    if (!query) {
+      const nextResults = new Map(mealFoodSearchResults);
+      nextResults.set(mealIndex, []);
+      setMealFoodSearchResults(nextResults);
+      return;
+    }
+    const nextLoading = new Map(mealFoodSearching);
+    nextLoading.set(mealIndex, true);
+    setMealFoodSearching(nextLoading);
+
+    const results = await searchFoodsInDb(query);
+    const nextResults = new Map(mealFoodSearchResults);
+    nextResults.set(mealIndex, results);
+    setMealFoodSearchResults(nextResults);
+
+    const loadingDone = new Map(mealFoodSearching);
+    loadingDone.set(mealIndex, false);
+    setMealFoodSearching(loadingDone);
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -1113,6 +1321,82 @@ Examples:
                         );
                       })}
                     </div>
+
+                    <div className="px-4 pb-4 bg-white border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => toggleMealAddFood(mealIndex)}
+                        className="mt-3 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        {mealAddFoodOpen.has(mealIndex) ? 'Hide Add Food' : 'Add Food'}
+                      </button>
+
+                      {mealAddFoodOpen.has(mealIndex) && (
+                        <div className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+                            <input
+                              type="text"
+                              value={mealFoodSearch.get(mealIndex) || ''}
+                              onChange={(e) => setMealSearchText(mealIndex, e.target.value)}
+                              placeholder="Search your food history..."
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => runMealFoodSearch(mealIndex)}
+                              className="px-3 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
+                            >
+                              Search
+                            </button>
+                          </div>
+
+                          <div>
+                            <div className="text-xs font-medium text-gray-600 mb-2">Frequent foods</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {savedFoods.slice(0, 6).map((food) => (
+                                <button
+                                  key={`meal-${mealIndex}-frequent-${food.food_name}`}
+                                  type="button"
+                                  onClick={() => addFoodTemplateToMeal(food, mealIndex)}
+                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 text-gray-700"
+                                >
+                                  + {food.food_name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {mealFoodSearching.get(mealIndex) ? (
+                            <div className="text-xs text-gray-500">Searching...</div>
+                          ) : (
+                            (mealFoodSearchResults.get(mealIndex) || []).length > 0 && (
+                              <div className="space-y-1.5">
+                                {(mealFoodSearchResults.get(mealIndex) || []).map((food, idx) => (
+                                  <div
+                                    key={`meal-${mealIndex}-search-${food.food_name}-${idx}`}
+                                    className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-md px-2 py-1.5"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="text-sm text-gray-900 truncate">{food.food_name}</div>
+                                      <div className="text-xs text-gray-500 truncate">
+                                        {formatQuantity(food.serving_size || food.quantity, food.amount || 1)} · {food.calories} cal
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addFoodTemplateToMeal(food, mealIndex)}
+                                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1413,6 +1697,108 @@ Examples:
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* SAVED FOODS SECTION */}
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-200 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setShowSavedFoods(!showSavedFoods)}
+          className="w-full p-5 sm:p-6 flex items-center justify-between hover:bg-emerald-100/50 transition-colors"
+        >
+          <div>
+            <h2 className="text-lg font-semibold text-emerald-900 flex items-center gap-2">
+              Saved Foods
+              <span className="text-sm font-normal text-emerald-600">({savedFoods.length})</span>
+            </h2>
+            <p className="text-sm text-emerald-700 mt-1">Top 10 foods you use most often</p>
+          </div>
+          <svg
+            className={`w-6 h-6 text-emerald-700 transition-transform ${showSavedFoods ? 'rotate-180' : ''}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showSavedFoods && (
+          <div className="px-5 sm:px-6 pb-5 sm:pb-6 border-t border-emerald-200">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 mt-4 mb-4">
+              <input
+                type="text"
+                value={savedFoodSearch}
+                onChange={(e) => setSavedFoodSearch(e.target.value)}
+                placeholder="Search foods in your database..."
+                className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-white"
+              />
+              <button
+                type="button"
+                onClick={runSavedFoodsSearch}
+                className="px-4 py-2 bg-emerald-700 text-white text-sm rounded-lg hover:bg-emerald-800"
+              >
+                Search
+              </button>
+            </div>
+
+            {isSavedFoodSearching && (
+              <div className="text-sm text-emerald-700 mb-3">Searching...</div>
+            )}
+
+            {savedFoodSearchResults.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {savedFoodSearchResults.map((food, idx) => (
+                  <div
+                    key={`saved-food-search-${food.food_name}-${idx}`}
+                    className="bg-white border border-emerald-200 rounded-lg p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{food.food_name}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {formatQuantity(food.serving_size || food.quantity, food.amount || 1)} · {food.calories} cal
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addFoodTemplateToMeal(food)}
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {isLoadingSavedFoods ? (
+              <div className="text-sm text-emerald-700">Loading saved foods...</div>
+            ) : savedFoods.length === 0 ? (
+              <div className="text-sm text-emerald-700">No frequent foods yet. Log foods to build your list.</div>
+            ) : (
+              <div className="space-y-2">
+                {savedFoods.map((food, idx) => (
+                  <div
+                    key={`saved-food-${food.food_name}-${idx}`}
+                    className="bg-white border border-emerald-200 rounded-lg p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{food.food_name}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {formatQuantity(food.serving_size || food.quantity, food.amount || 1)} · {food.calories} cal
+                        {typeof food.usageCount === 'number' ? ` · used ${food.usageCount}x` : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addFoodTemplateToMeal(food)}
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
