@@ -12,6 +12,21 @@ type MonthlyHistoryGroup = {
   days: any[];
 };
 
+type FoodSearchResult = {
+  food_name: string;
+  quantity: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
+  categories: string[];
+  whole_food_ingredients: string[];
+  source: string | null;
+};
+
 export default function DashboardView({ userId }: { userId: string | null }) {
   // ============================================================================
   // STATE MANAGEMENT
@@ -167,6 +182,79 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     } catch (error) {
       console.error('Error deleting item:', error);
       alert('Failed to delete item');
+    }
+  };
+
+  const searchFoods = async (query: string): Promise<FoodSearchResult[]> => {
+    if (!userId || !query.trim()) return [];
+
+    const { data, error } = await supabase
+      .from('food_items')
+      .select('food_name, quantity, calories, protein, fat, carbs, fiber, sugar, sodium, categories, whole_food_ingredients, source, logged_at')
+      .eq('user_id', userId)
+      .ilike('food_name', `%${query.trim()}%`)
+      .order('logged_at', { ascending: false })
+      .limit(250);
+
+    if (error || !data) return [];
+
+    const deduped = new Map<string, FoodSearchResult>();
+    for (const row of data as any[]) {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key || deduped.has(key)) continue;
+      deduped.set(key, {
+        food_name: row.food_name,
+        quantity: row.quantity || '1 serving',
+        calories: Number(row.calories) || 0,
+        protein: Number(row.protein) || 0,
+        fat: Number(row.fat) || 0,
+        carbs: Number(row.carbs) || 0,
+        fiber: Number(row.fiber) || 0,
+        sugar: Number(row.sugar) || 0,
+        sodium: Number(row.sodium) || 0,
+        categories: row.categories || [],
+        whole_food_ingredients: row.whole_food_ingredients || [],
+        source: row.source || 'cache',
+      });
+    }
+    return Array.from(deduped.values()).slice(0, 10);
+  };
+
+  const addFoodToMeal = async (dayDate: Date, mealType: string, food: FoodSearchResult) => {
+    if (!userId) return;
+
+    try {
+      const loggedAt = new Date(dayDate);
+      loggedAt.setHours(12, 0, 0, 0);
+
+      const { error } = await supabase
+        .from('food_items')
+        .insert({
+          user_id: userId,
+          food_name: food.food_name,
+          quantity: food.quantity || '1 serving',
+          calories: food.calories || 0,
+          protein: food.protein || 0,
+          fat: food.fat || 0,
+          carbs: food.carbs || 0,
+          fiber: food.fiber || 0,
+          sugar: food.sugar || 0,
+          sodium: food.sodium || 0,
+          categories: food.categories || [],
+          whole_food_ingredients: food.whole_food_ingredients || [],
+          meal_type: mealType,
+          meal_group_id: crypto.randomUUID(),
+          notes: null,
+          eating_out: false,
+          logged_at: loggedAt.toISOString(),
+          source: food.source || 'cache',
+        });
+
+      if (error) throw error;
+      loadDashboardData();
+    } catch (error) {
+      console.error('Error adding food to meal:', error);
+      alert('Failed to add food to meal');
     }
   };
 
@@ -763,6 +851,8 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                       onManualAdd={openManualAddModal}
                       expandedMeals={dayExpandedMeals}
                       onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}
+                      onSearchFoods={searchFoods}
+                      onAddFoodToMeal={addFoodToMeal}
                       isIncomplete={day.isIncomplete}
                       isOverridden={incompleteOverrides.has(day.dateKey)}
                       onToggleOverride={() =>

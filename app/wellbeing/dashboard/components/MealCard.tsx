@@ -1,16 +1,33 @@
 'use client';
 
+import { useState } from 'react';
 import FoodItemCard from './FoodItemCard';
 
 interface MealCardProps {
   meal: any;
+  dayDate: Date;
   isExpanded: boolean;
   onToggle: () => void;
   onEditItem: (itemId: string, updates: any) => void;
   onDeleteItem: (itemId: string) => void;
+  onSearchFoods: (query: string) => Promise<any[]>;
+  onAddFood: (food: any) => void;
 }
 
-export default function MealCard({ meal, isExpanded, onToggle, onEditItem, onDeleteItem }: MealCardProps) {
+export default function MealCard({
+  meal,
+  dayDate,
+  isExpanded,
+  onToggle,
+  onEditItem,
+  onDeleteItem,
+  onSearchFoods,
+  onAddFood,
+}: MealCardProps) {
+  const [showAddFood, setShowAddFood] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   
   const formatMealType = (type: string) => {
     const emoji = {
@@ -37,6 +54,17 @@ export default function MealCard({ meal, isExpanded, onToggle, onEditItem, onDel
 
     if (names.length === 0) return 'No items';
     return names.join(', ');
+  };
+
+  const runSearch = async () => {
+    if (!searchText.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    const results = await onSearchFoods(searchText);
+    setSearchResults(results);
+    setSearching(false);
   };
 
   return (
@@ -87,6 +115,64 @@ export default function MealCard({ meal, isExpanded, onToggle, onEditItem, onDel
               onDelete={onDeleteItem}
             />
           ))}
+
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setShowAddFood(!showAddFood)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              {showAddFood ? 'Hide Add Food' : 'Add Food to This Meal'}
+            </button>
+
+            {showAddFood && (
+              <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search your food history..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={runSearch}
+                    className="px-3 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800"
+                  >
+                    Search
+                  </button>
+                </div>
+
+                {searching && <div className="text-xs text-gray-500">Searching...</div>}
+
+                {searchResults.length > 0 && (
+                  <div className="space-y-1.5">
+                    {searchResults.map((food, idx) => (
+                      <div
+                        key={`${food.food_name}-${idx}-${meal.meal_type}-${dayDate.toDateString()}`}
+                        className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm text-gray-900 truncate">{food.food_name}</div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {food.quantity || '1 serving'} · {food.calories || 0} cal
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onAddFood(food)}
+                          className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
