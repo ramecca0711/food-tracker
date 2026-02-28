@@ -45,6 +45,75 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const [scanTargetMeal, setScanTargetMeal]         = useState<number | null>(null);
   const [scanTargetItem, setScanTargetItem]         = useState<number | null>(null);
 
+  const toSafeAmount = (raw: any) => {
+    const n = parseFloat(String(raw));
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  };
+
+  const parseQuantityComposite = (quantityRaw: any) => {
+    const quantity = String(quantityRaw || '').trim();
+    const matched = quantity.match(/^(\d*\.?\d+)\s*[x×]\s+(.+)$/i);
+    if (matched) {
+      return { amount: toSafeAmount(matched[1]), servingSize: matched[2].trim() || '1 serving' };
+    }
+    return { amount: 1, servingSize: quantity || '1 serving' };
+  };
+
+  const formatQuantity = (servingSizeRaw: any, amountRaw: any) => {
+    const servingSize = String(servingSizeRaw || '1 serving').trim() || '1 serving';
+    const amount = toSafeAmount(amountRaw);
+    return amount === 1 ? servingSize : `${amount} x ${servingSize}`;
+  };
+
+  const normalizeItemForEditing = (item: any) => {
+    const parsedQuantity = parseQuantityComposite(item.quantity);
+    const amount = toSafeAmount(item.amount ?? parsedQuantity.amount);
+    const servingSize = String(item.serving_size || parsedQuantity.servingSize || '1 serving').trim() || '1 serving';
+
+    const calories = Number(item.calories) || 0;
+    const protein = Number(item.protein) || 0;
+    const fat = Number(item.fat) || 0;
+    const carbs = Number(item.carbs) || 0;
+    const fiber = Number(item.fiber) || 0;
+    const sugar = Number(item.sugar) || 0;
+    const sodium = Number(item.sodium) || 0;
+
+    const baseCalories = Number.isFinite(Number(item.base_calories)) ? Number(item.base_calories) : calories / amount;
+    const baseProtein = Number.isFinite(Number(item.base_protein)) ? Number(item.base_protein) : protein / amount;
+    const baseFat = Number.isFinite(Number(item.base_fat)) ? Number(item.base_fat) : fat / amount;
+    const baseCarbs = Number.isFinite(Number(item.base_carbs)) ? Number(item.base_carbs) : carbs / amount;
+    const baseFiber = Number.isFinite(Number(item.base_fiber)) ? Number(item.base_fiber) : fiber / amount;
+    const baseSugar = Number.isFinite(Number(item.base_sugar)) ? Number(item.base_sugar) : sugar / amount;
+    const baseSodium = Number.isFinite(Number(item.base_sodium)) ? Number(item.base_sodium) : sodium / amount;
+
+    return {
+      ...item,
+      serving_size: servingSize,
+      amount,
+      base_calories: baseCalories,
+      base_protein: baseProtein,
+      base_fat: baseFat,
+      base_carbs: baseCarbs,
+      base_fiber: baseFiber,
+      base_sugar: baseSugar,
+      base_sodium: baseSodium,
+      quantity: formatQuantity(servingSize, amount),
+      calories: Math.round(baseCalories * amount),
+      protein: Math.round(baseProtein * amount * 10) / 10,
+      fat: Math.round(baseFat * amount * 10) / 10,
+      carbs: Math.round(baseCarbs * amount * 10) / 10,
+      fiber: Math.round(baseFiber * amount * 10) / 10,
+      sugar: Math.round(baseSugar * amount * 10) / 10,
+      sodium: Math.round(baseSodium * amount),
+    };
+  };
+
+  const normalizeMealsForEditing = (meals: any[]) =>
+    (meals || []).map((meal: any) => ({
+      ...meal,
+      items: (meal.items || []).map((item: any) => normalizeItemForEditing(item)),
+    }));
+
   // ============================================================================
   // LOAD SAVED MEALS
   // ============================================================================
@@ -114,8 +183,9 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         )
       );
 
-      setParsedData(data);
-      setEditingMeals(data.meals || []);
+      const normalizedMeals = normalizeMealsForEditing(data.meals || []);
+      setParsedData({ ...data, meals: normalizedMeals });
+      setEditingMeals(normalizedMeals);
       setExpandedItems(new Map());
 
       const notesMap = new Map<number, string>();
@@ -164,27 +234,42 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   const handleItemEdit = (mealIndex: number, itemIndex: number, field: string, value: any) => {
     const updated = [...editingMeals];
+    const currentItem = normalizeItemForEditing(updated[mealIndex].items[itemIndex]);
 
-    if (field === 'quantity') {
-      // Scale all macros proportionally when the user changes quantity
-      const oldQty = parseFloat(updated[mealIndex].items[itemIndex].quantity) || 1;
-      const newQty = parseFloat(value) || 1;
-      const ratio = newQty / oldQty;
-      const item = updated[mealIndex].items[itemIndex];
-      updated[mealIndex].items[itemIndex] = {
-        ...item,
-        quantity: value,
-        calories: Math.round(item.calories * ratio),
-        protein:  Math.round(item.protein  * ratio * 10) / 10,
-        fat:      Math.round(item.fat      * ratio * 10) / 10,
-        carbs:    Math.round(item.carbs    * ratio * 10) / 10,
-        fiber:    Math.round(item.fiber    * ratio * 10) / 10,
-        sugar:    Math.round(item.sugar    * ratio * 10) / 10,
-        sodium:   Math.round(item.sodium   * ratio),
-      };
+    if (field === 'amount') {
+      const amount = toSafeAmount(value);
+      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({ ...currentItem, amount });
+    } else if (field === 'serving_size') {
+      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({
+        ...currentItem,
+        serving_size: String(value || ''),
+      });
+    } else if (field === 'quantity') {
+      const parsed = parseQuantityComposite(value);
+      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({
+        ...currentItem,
+        amount: parsed.amount,
+        serving_size: parsed.servingSize,
+      });
+    } else if (
+      field === 'calories' ||
+      field === 'protein' ||
+      field === 'fat' ||
+      field === 'carbs' ||
+      field === 'fiber' ||
+      field === 'sugar' ||
+      field === 'sodium'
+    ) {
+      const numericValue = Number(value) || 0;
+      const amount = toSafeAmount(currentItem.amount);
+      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({
+        ...currentItem,
+        [field]: numericValue,
+        [`base_${field}`]: numericValue / amount,
+      });
     } else {
       updated[mealIndex].items[itemIndex] = {
-        ...updated[mealIndex].items[itemIndex],
+        ...currentItem,
         [field]: value,
       };
     }
@@ -236,7 +321,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         const mealItems = (meal.items || []).map((item: any) => ({
           user_id:                userId,
           food_name:              item.food_name,
-          quantity:               item.quantity,
+          quantity:               formatQuantity(item.serving_size || item.quantity, item.amount || 1),
           calories:               parseInt(item.calories)   || 0,
           protein:                parseFloat(item.protein)  || 0,
           fat:                    parseFloat(item.fat)      || 0,
@@ -359,9 +444,12 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // master_food_database on confirm, so the same product hits the local cache
   // on future lookups instead of querying OFF again.
   const handleScanResult = (scanData: any) => {
+    const scannedServingSize = String(scanData.serving_size || scanData.quantity || '1 serving');
     const scannedItem = {
       food_name:              String(scanData.food_name  || 'Scanned item'),
-      quantity:               String(scanData.quantity   || '1 serving'),
+      serving_size:           scannedServingSize,
+      amount:                 toSafeAmount(scanData.amount ?? 1),
+      quantity:               formatQuantity(scannedServingSize, scanData.amount ?? 1),
       calories:               Number(scanData.calories)  || 0,
       protein:                Number(scanData.protein)   || 0,
       fat:                    Number(scanData.fat)       || 0,
@@ -369,6 +457,13 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       fiber:                  Number(scanData.fiber)     || 0,
       sugar:                  Number(scanData.sugar)     || 0,
       sodium:                 Number(scanData.sodium)    || 0,
+      base_calories:          Number(scanData.base_calories ?? scanData.calories) || 0,
+      base_protein:           Number(scanData.base_protein  ?? scanData.protein)  || 0,
+      base_fat:               Number(scanData.base_fat      ?? scanData.fat)      || 0,
+      base_carbs:             Number(scanData.base_carbs    ?? scanData.carbs)    || 0,
+      base_fiber:             Number(scanData.base_fiber    ?? scanData.fiber)    || 0,
+      base_sugar:             Number(scanData.base_sugar    ?? scanData.sugar)    || 0,
+      base_sodium:            Number(scanData.base_sodium   ?? scanData.sodium)   || 0,
       categories:             scanData.categories             || [],
       whole_food_ingredients: scanData.whole_food_ingredients || [],
       source:                 scanData.source, // 'barcode' or 'label_photo'
@@ -385,7 +480,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       const updated = [...editingMeals];
       updated[scanTargetMeal].items[scanTargetItem] = {
         ...updated[scanTargetMeal].items[scanTargetItem],
-        ...scannedItem,
+        ...normalizeItemForEditing(scannedItem),
       };
       setEditingMeals(updated);
       setScanTargetMeal(null);
@@ -402,7 +497,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       if (editingMeals.length > 0) {
         // Append to the first meal in the current parse session
         const updated = [...editingMeals];
-        updated[0].items = [...(updated[0].items || []), scannedItem];
+        updated[0].items = [...(updated[0].items || []), normalizeItemForEditing(scannedItem)];
         setEditingMeals(updated);
 
         // Auto-expand the newly appended item so the user sees all fields filled in
@@ -413,7 +508,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         setExpandedItems(newExpanded);
       } else {
         // Nothing parsed yet — bootstrap a new meal from this scan alone
-        const newMeal = { meal_type, confidence: 1.0, items: [scannedItem] };
+        const newMeal = { meal_type, confidence: 1.0, items: [normalizeItemForEditing(scannedItem)] };
         setEditingMeals([newMeal]);
         setParsedData({ meals: [newMeal], cache_candidates: [] });
 
@@ -555,7 +650,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       const itemsToInsert = savedMeal.items.map((item: any) => ({
         user_id:                userId,
         food_name:              item.food_name,
-        quantity:               item.quantity,
+        quantity:               formatQuantity(item.serving_size || item.quantity, item.amount || 1),
         calories:               parseInt(item.calories)   || 0,
         protein:                parseFloat(item.protein)  || 0,
         fat:                    parseFloat(item.fat)      || 0,
@@ -826,7 +921,7 @@ Examples:
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900">{item.food_name}</div>
                                 <div className="text-sm text-gray-600 mt-0.5">
-                                  {item.quantity} · {item.calories} cal ·
+                                  {formatQuantity(item.serving_size || item.quantity, item.amount || 1)} · {item.calories} cal ·
                                   P: {item.protein}g · F: {item.fat}g · C: {item.carbs}g
                                 </div>
                                 {/* Source badge — shows where macros came from (database, barcode, AI, etc.) */}
@@ -872,7 +967,7 @@ Examples:
 
                             {isExpanded && (
                               <div className="p-3 pt-0 border-t border-gray-200 bg-gray-50 space-y-3">
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                   <div>
                                     <label className="text-xs text-gray-600 mb-1.5 block font-medium">Food Name</label>
                                     <input
@@ -883,11 +978,22 @@ Examples:
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-600 mb-1.5 block font-medium">Quantity (auto-adjusts macros)</label>
+                                    <label className="text-xs text-gray-600 mb-1.5 block font-medium">Serving size</label>
                                     <input
                                       type="text"
-                                      value={item.quantity}
-                                      onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'quantity', e.target.value)}
+                                      value={item.serving_size || item.quantity}
+                                      onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'serving_size', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-600 mb-1.5 block font-medium">Amount</label>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0.1"
+                                      value={item.amount ?? 1}
+                                      onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'amount', e.target.value)}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
                                     />
                                   </div>

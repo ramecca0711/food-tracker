@@ -86,6 +86,8 @@ If the image is unclear, not a nutrition label, or values are unreadable, includ
     // Normalise and return in FoodItem-compatible shape
     return NextResponse.json({
       food_name: String(parsed.food_name || 'Unknown Product').trim(),
+      serving_size: String(parsed.serving_size || '1 serving').trim(),
+      amount: 1,
       quantity:  String(parsed.serving_size || '1 serving').trim(),
       calories:  Math.round(Number(parsed.calories)  || 0),
       protein:   Math.round(Number(parsed.protein)   * 10) / 10 || 0,
@@ -94,6 +96,13 @@ If the image is unclear, not a nutrition label, or values are unreadable, includ
       fiber:     Math.round(Number(parsed.fiber)      * 10) / 10 || 0,
       sugar:     Math.round(Number(parsed.sugar)      * 10) / 10 || 0,
       sodium:    Math.round(Number(parsed.sodium)     || 0),
+      base_calories: Math.round(Number(parsed.calories)  || 0),
+      base_protein:  Math.round(Number(parsed.protein)   * 10) / 10 || 0,
+      base_fat:      Math.round(Number(parsed.fat)       * 10) / 10 || 0,
+      base_carbs:    Math.round(Number(parsed.carbs)     * 10) / 10 || 0,
+      base_fiber:    Math.round(Number(parsed.fiber)     * 10) / 10 || 0,
+      base_sugar:    Math.round(Number(parsed.sugar)     * 10) / 10 || 0,
+      base_sodium:   Math.round(Number(parsed.sodium)    || 0),
       source: 'label_photo' as const,
       // Categories and whole-food-ingredients can't be determined from a label photo;
       // set to empty arrays and let the user edit if needed.

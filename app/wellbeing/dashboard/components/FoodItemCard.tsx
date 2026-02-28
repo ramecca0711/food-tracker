@@ -16,12 +16,77 @@ interface FoodItemCardProps {
 export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardProps) {
   const [isEditing, setIsEditing] = useState(false);
 
+  const toSafeAmount = (raw: any) => {
+    const n = parseFloat(String(raw));
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  };
+
+  const parseQuantityComposite = (quantityRaw: any) => {
+    const quantity = String(quantityRaw || '').trim();
+    const matched = quantity.match(/^(\d*\.?\d+)\s*[x×]\s+(.+)$/i);
+    if (matched) {
+      return { amount: toSafeAmount(matched[1]), servingSize: matched[2].trim() || '1 serving' };
+    }
+    return { amount: 1, servingSize: quantity || '1 serving' };
+  };
+
+  const formatQuantity = (servingSizeRaw: any, amountRaw: any) => {
+    const servingSize = String(servingSizeRaw || '1 serving').trim() || '1 serving';
+    const amount = toSafeAmount(amountRaw);
+    return amount === 1 ? servingSize : `${amount} x ${servingSize}`;
+  };
+
+  const normalizeValues = (raw: any) => {
+    const parsed = parseQuantityComposite(raw.quantity);
+    const amount = toSafeAmount(raw.amount ?? parsed.amount);
+    const servingSize = String(raw.serving_size || parsed.servingSize || '1 serving').trim() || '1 serving';
+
+    const calories = Number(raw.calories) || 0;
+    const protein = Number(raw.protein) || 0;
+    const fat = Number(raw.fat) || 0;
+    const carbs = Number(raw.carbs) || 0;
+    const fiber = Number(raw.fiber) || 0;
+    const sugar = Number(raw.sugar) || 0;
+    const sodium = Number(raw.sodium) || 0;
+
+    const baseCalories = Number.isFinite(Number(raw.base_calories)) ? Number(raw.base_calories) : calories / amount;
+    const baseProtein = Number.isFinite(Number(raw.base_protein)) ? Number(raw.base_protein) : protein / amount;
+    const baseFat = Number.isFinite(Number(raw.base_fat)) ? Number(raw.base_fat) : fat / amount;
+    const baseCarbs = Number.isFinite(Number(raw.base_carbs)) ? Number(raw.base_carbs) : carbs / amount;
+    const baseFiber = Number.isFinite(Number(raw.base_fiber)) ? Number(raw.base_fiber) : fiber / amount;
+    const baseSugar = Number.isFinite(Number(raw.base_sugar)) ? Number(raw.base_sugar) : sugar / amount;
+    const baseSodium = Number.isFinite(Number(raw.base_sodium)) ? Number(raw.base_sodium) : sodium / amount;
+
+    return {
+      ...raw,
+      serving_size: servingSize,
+      amount,
+      base_calories: baseCalories,
+      base_protein: baseProtein,
+      base_fat: baseFat,
+      base_carbs: baseCarbs,
+      base_fiber: baseFiber,
+      base_sugar: baseSugar,
+      base_sodium: baseSodium,
+      quantity: formatQuantity(servingSize, amount),
+      calories: Math.round(baseCalories * amount),
+      protein: Math.round(baseProtein * amount * 10) / 10,
+      fat: Math.round(baseFat * amount * 10) / 10,
+      carbs: Math.round(baseCarbs * amount * 10) / 10,
+      fiber: Math.round(baseFiber * amount * 10) / 10,
+      sugar: Math.round(baseSugar * amount * 10) / 10,
+      sodium: Math.round(baseSodium * amount),
+    };
+  };
+
   // Edit form values — initialised from the item and updated on every keystroke
   // or scan. Source / categories / whole_food_ingredients are carried through
   // so they are preserved on a plain manual edit and replaced on a scan.
-  const [editValues, setEditValues] = useState({
+  const [editValues, setEditValues] = useState(normalizeValues({
     food_name:              item.food_name,
     quantity:               item.quantity,
+    serving_size:           item.serving_size,
+    amount:                 item.amount,
     calories:               item.calories,
     protein:                item.protein,
     fat:                    item.fat,
@@ -32,7 +97,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
     source:                 item.source               ?? null,
     categories:             item.categories            ?? [],
     whole_food_ingredients: item.whole_food_ingredients ?? [],
-  });
+  }));
 
   // Scanner modal visibility — only rendered while editing
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -43,9 +108,11 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
   // the review step.  Autofills all edit fields with the scanned values and
   // ensures the edit panel is open so the user can see (and adjust) them.
   const handleScanResult = (scanData: any) => {
-    setEditValues({
+    setEditValues(normalizeValues({
       food_name:              String(scanData.food_name  || editValues.food_name),
-      quantity:               String(scanData.quantity   || editValues.quantity),
+      serving_size:           String(scanData.serving_size || scanData.quantity || editValues.serving_size || '1 serving'),
+      amount:                 toSafeAmount(scanData.amount ?? 1),
+      quantity:               formatQuantity(scanData.serving_size || scanData.quantity || editValues.serving_size || '1 serving', scanData.amount ?? 1),
       calories:               Number(scanData.calories)  || 0,
       protein:                Number(scanData.protein)   || 0,
       fat:                    Number(scanData.fat)       || 0,
@@ -53,10 +120,17 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
       fiber:                  Number(scanData.fiber)     || 0,
       sugar:                  Number(scanData.sugar)     || 0,
       sodium:                 Number(scanData.sodium)    || 0,
+      base_calories:          Number(scanData.base_calories ?? scanData.calories) || 0,
+      base_protein:           Number(scanData.base_protein  ?? scanData.protein)  || 0,
+      base_fat:               Number(scanData.base_fat      ?? scanData.fat)      || 0,
+      base_carbs:             Number(scanData.base_carbs    ?? scanData.carbs)    || 0,
+      base_fiber:             Number(scanData.base_fiber    ?? scanData.fiber)    || 0,
+      base_sugar:             Number(scanData.base_sugar    ?? scanData.sugar)    || 0,
+      base_sodium:            Number(scanData.base_sodium   ?? scanData.sodium)   || 0,
       source:                 scanData.source            ?? null,
       categories:             scanData.categories            ?? [],
       whole_food_ingredients: scanData.whole_food_ingredients ?? [],
-    });
+    }));
     // Make the edit panel visible so the user sees the autofilled values
     setIsEditing(true);
     setShowBarcodeScanner(false);
@@ -66,15 +140,20 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
   const handleSave = () => {
     // Pass the full editValues (including source, categories, whole_food_ingredients)
     // so the parent can write all fields back to the database.
-    onEdit(item.id, editValues);
+    onEdit(item.id, {
+      ...editValues,
+      quantity: formatQuantity(editValues.serving_size || editValues.quantity, editValues.amount || 1),
+    });
     setIsEditing(false);
   };
 
   const handleCancel = () => {
     // Reset all fields to the original item values, discarding any edits / scan
-    setEditValues({
+    setEditValues(normalizeValues({
       food_name:              item.food_name,
       quantity:               item.quantity,
+      serving_size:           item.serving_size,
+      amount:                 item.amount,
       calories:               item.calories,
       protein:                item.protein,
       fat:                    item.fat,
@@ -85,7 +164,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
       source:                 item.source               ?? null,
       categories:             item.categories            ?? [],
       whole_food_ingredients: item.whole_food_ingredients ?? [],
-    });
+    }));
     setIsEditing(false);
   };
 
@@ -94,7 +173,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
       {isEditing ? (
         <div className="space-y-3">
           {/* Food Name & Quantity */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Food Name</label>
               <input
@@ -105,11 +184,22 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Serving size</label>
               <input
                 type="text"
-                value={editValues.quantity}
-                onChange={(e) => setEditValues({...editValues, quantity: e.target.value})}
+                value={editValues.serving_size || editValues.quantity}
+                onChange={(e) => setEditValues(normalizeValues({ ...editValues, serving_size: e.target.value }))}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Amount</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={editValues.amount ?? 1}
+                onChange={(e) => setEditValues(normalizeValues({ ...editValues, amount: e.target.value }))}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
               />
             </div>
@@ -124,7 +214,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                 <input
                   type="number"
                   value={editValues.calories}
-                  onChange={(e) => setEditValues({...editValues, calories: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, calories: Number(e.target.value) || 0, base_calories: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -134,7 +224,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                   type="number"
                   step="0.1"
                   value={editValues.protein}
-                  onChange={(e) => setEditValues({...editValues, protein: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, protein: Number(e.target.value) || 0, base_protein: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -144,7 +234,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                   type="number"
                   step="0.1"
                   value={editValues.fat}
-                  onChange={(e) => setEditValues({...editValues, fat: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, fat: Number(e.target.value) || 0, base_fat: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -154,7 +244,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                   type="number"
                   step="0.1"
                   value={editValues.carbs}
-                  onChange={(e) => setEditValues({...editValues, carbs: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, carbs: Number(e.target.value) || 0, base_carbs: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -171,7 +261,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                   type="number"
                   step="0.1"
                   value={editValues.fiber}
-                  onChange={(e) => setEditValues({...editValues, fiber: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, fiber: Number(e.target.value) || 0, base_fiber: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -181,7 +271,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                   type="number"
                   step="0.1"
                   value={editValues.sugar}
-                  onChange={(e) => setEditValues({...editValues, sugar: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, sugar: Number(e.target.value) || 0, base_sugar: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -190,7 +280,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                 <input
                   type="number"
                   value={editValues.sodium}
-                  onChange={(e) => setEditValues({...editValues, sodium: e.target.value})}
+                  onChange={(e) => setEditValues(normalizeValues({ ...editValues, sodium: Number(e.target.value) || 0, base_sodium: (Number(e.target.value) || 0) / toSafeAmount(editValues.amount) }))}
                   className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center"
                 />
               </div>
@@ -255,7 +345,7 @@ export default function FoodItemCard({ item, onEdit, onDelete }: FoodItemCardPro
                 {item.food_name}
               </span>
               <span className="text-xs text-gray-500 ml-2">
-                {item.quantity}
+                {formatQuantity(item.serving_size || item.quantity, item.amount || 1)}
               </span>
             </div>
             <div className="flex items-center gap-2">
