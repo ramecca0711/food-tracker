@@ -212,6 +212,24 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     }
   };
 
+  const handleMoveItemToMeal = async (itemId: string, targetMealType: string) => {
+    if (!userId || !itemId || !targetMealType) return;
+
+    try {
+      const { error } = await supabase
+        .from('food_items')
+        .update({ meal_type: targetMealType })
+        .eq('id', itemId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      loadDashboardData();
+    } catch (error) {
+      console.error('Error moving item to meal:', error);
+      alert('Failed to move food item');
+    }
+  };
+
   const searchFoods = async (query: string): Promise<FoodSearchResult[]> => {
     if (!userId || !query.trim()) return [];
 
@@ -942,6 +960,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                       onEditItem={handleEditItem}
                       onDeleteItem={handleDeleteItem}
                       onDeleteMeal={handleDeleteMeal}
+                      onMoveItemToMeal={handleMoveItemToMeal}
                       onManualAdd={openManualAddModal}
                       expandedMeals={dayExpandedMeals}
                       onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}

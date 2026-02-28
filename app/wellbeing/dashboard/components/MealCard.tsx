@@ -12,6 +12,7 @@ interface MealCardProps {
   onEditItem: (itemId: string, updates: any) => void;
   onDeleteItem: (itemId: string) => void;
   onDeleteMeal: (dayDate: Date, mealType: string) => void;
+  onMoveItemToMeal: (itemId: string, targetMealType: string) => void;
   onSearchFoods: (query: string) => Promise<any[]>;
   onAddFood: (food: any) => void;
   quickAddFoods: any[];
@@ -26,6 +27,7 @@ export default function MealCard({
   onEditItem,
   onDeleteItem,
   onDeleteMeal,
+  onMoveItemToMeal,
   onSearchFoods,
   onAddFood,
   quickAddFoods,
@@ -34,6 +36,7 @@ export default function MealCard({
   const [searchText, setSearchText] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   
   const formatMealType = (type: string) => {
     const emoji = {
@@ -74,7 +77,39 @@ export default function MealCard({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div
+      className={`bg-white border rounded-lg overflow-hidden transition-colors ${
+        isDragOver ? 'border-blue-400 bg-blue-50/40' : 'border-gray-200'
+      }`}
+      onDragOver={(e) => {
+        const raw = e.dataTransfer.getData('text/plain');
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.itemId && parsed?.sourceMealType !== mealType) {
+            e.preventDefault();
+            if (!isDragOver) setIsDragOver(true);
+          }
+        } catch {
+          // Ignore non-item drags
+        }
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const raw = e.dataTransfer.getData('text/plain');
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.itemId && parsed?.sourceMealType && parsed.sourceMealType !== mealType) {
+            onMoveItemToMeal(parsed.itemId, mealType);
+          }
+        } catch {
+          // Ignore malformed drop payloads
+        }
+      }}
+    >
       <div
         onClick={onToggle}
         role="button"
@@ -129,12 +164,26 @@ export default function MealCard({
       {isExpanded && (
         <div className="px-3 pb-3 space-y-1.5 border-t border-gray-100">
           {meal.items.map((item: any, idx: number) => (
-            <FoodItemCard
+            <div
               key={item.id || `${meal.meal_type}-${idx}-${item.food_name || 'item'}`}
-              item={item}
-              onEdit={onEditItem}
-              onDelete={onDeleteItem}
-            />
+              draggable={Boolean(item.id)}
+              onDragStart={(e) => {
+                if (!item.id) return;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData(
+                  'text/plain',
+                  JSON.stringify({ itemId: item.id, sourceMealType: mealType })
+                );
+              }}
+              className={item.id ? 'cursor-grab active:cursor-grabbing' : ''}
+              title={item.id ? 'Drag to move to another meal' : undefined}
+            >
+              <FoodItemCard
+                item={item}
+                onEdit={onEditItem}
+                onDelete={onDeleteItem}
+              />
+            </div>
           ))}
 
           <div className="pt-2">

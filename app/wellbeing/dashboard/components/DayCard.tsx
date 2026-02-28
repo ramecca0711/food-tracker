@@ -11,6 +11,7 @@ interface DayCardProps {
   onEditItem: (itemId: string, updates: any) => void;
   onDeleteItem: (itemId: string) => void;
   onDeleteMeal: (dayDate: Date, mealType: string) => void;
+  onMoveItemToMeal: (itemId: string, targetMealType: string) => void;
   onManualAdd: (dateKey: string) => void;
   expandedMeals: Set<string>;
   onToggleMeal: (mealType: string) => void;
@@ -31,6 +32,7 @@ export default function DayCard({
   onEditItem,
   onDeleteItem,
   onDeleteMeal,
+  onMoveItemToMeal,
   onManualAdd,
   expandedMeals,
   onToggleMeal,
@@ -303,6 +305,7 @@ export default function DayCard({
                 onEditItem={onEditItem}
                 onDeleteItem={onDeleteItem}
                 onDeleteMeal={onDeleteMeal}
+                onMoveItemToMeal={onMoveItemToMeal}
                 onSearchFoods={onSearchFoods}
                 onAddFood={(food) => onAddFoodToMeal(day.date, meal.meal_type, food)}
                 quickAddFoods={quickAddFoods}
