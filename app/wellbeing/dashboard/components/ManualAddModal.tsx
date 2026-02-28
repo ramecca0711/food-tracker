@@ -54,8 +54,6 @@ export default function ManualAddModal({
   const [customEatingOut, setCustomEatingOut] = useState(false);
   const [customRestaurant, setCustomRestaurant] = useState('');
 
-  if (!isOpen) return null;
-
   const formatMealType = (type: string) => {
     const emoji = {
       breakfast: '🌅',
@@ -105,6 +103,8 @@ export default function ManualAddModal({
       ),
     [mealFoods]
   );
+
+  if (!isOpen) return null;
 
   const addDraftFood = () => {
     if (!draftFoodName.trim() || !draftQuantity.trim() || !draftCalories.trim()) {
