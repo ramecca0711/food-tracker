@@ -19,12 +19,19 @@ type FoodMacrosPer100g = {
 
 type Source = 'cache' | 'off' | 'ai';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Always create clients inside functions — never at module level.
+// Module-level instantiation throws at build time when env vars are absent
+// during Next.js static analysis (next build).
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAI() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 const OFF_SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl';
 const OFF_PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product';
@@ -76,7 +83,7 @@ async function lookupCache(foodName: string) {
   const n = normalize(foodName);
 
   // Grab a few candidates and pick best match in JS (fast + robust)
-  const { data } = await supabase
+  const { data } = await getSupabase()
     .from('master_food_database')
     .select('*')
     .ilike('normalized_name', `%${n}%`)
@@ -209,7 +216,7 @@ function offToFood(p: any): FoodMacrosPer100g {
 
 async function lookupAI(foodName: string) {
   const aiResponse = await withTimeout(
-    openai.chat.completions.create({
+    getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {

@@ -14,6 +14,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import ThemeSwitcher from './ThemeSwitcher';
+import BrandMark from './BrandMark';
 
 interface SidebarProps {
   userEmail: string | null;
@@ -48,8 +50,8 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
     const isActive = pathname === path;
     return `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
       isActive
-        ? 'bg-blue-600 text-white shadow-sm'
-        : 'text-gray-700 hover:bg-gray-100 active:bg-gray-200'
+        ? 'bg-[var(--accent-strong)] text-white shadow-sm'
+        : 'text-[var(--text-muted)] hover:bg-[var(--surface-1)] active:bg-[var(--accent-soft)]'
     }`;
   };
 
@@ -57,13 +59,13 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
     const isActive = pathname === path;
     return `flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all ml-2 ${
       isActive
-        ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
-        : 'text-gray-600 hover:bg-gray-50 border-l-2 border-transparent hover:border-gray-200'
+        ? 'bg-[var(--accent-soft)] text-[var(--accent-strong)] font-medium border-l-2 border-[var(--accent-lavender)]'
+        : 'text-[var(--text-muted)] hover:bg-[var(--surface-1)] border-l-2 border-transparent hover:border-[var(--border-soft)]'
     }`;
   };
 
   const getSectionButtonClasses = () => {
-    return `w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-100 rounded-lg transition-all`;
+    return `w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--surface-1)] rounded-lg transition-all`;
   };
 
   // The full navigation tree — shared between expanded desktop and mobile views
@@ -112,7 +114,7 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
             </Link>
 
             <div className="ml-2 mt-2 mb-1">
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">Fuel</div>
+              <div className="px-3 py-1 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Fuel</div>
             </div>
             <Link href="/wellbeing/fuel/food-log" className={getSubLinkClasses('/wellbeing/fuel/food-log')}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,7 +130,7 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
             </Link>
 
             <div className="ml-2 mt-2 mb-1">
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wide">Body</div>
+              <div className="px-3 py-1 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Body</div>
             </div>
             <Link href="/wellbeing/body/dashboard" className={getSubLinkClasses('/wellbeing/body/dashboard')}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -307,7 +309,7 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
       </div>
 
       {/* Debug */}
-      <div className="pt-3 border-t border-gray-200">
+      <div className="pt-3 border-t border-[var(--border-soft)]">
         <Link href="/debug" className={getLinkClasses('/debug')}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -329,11 +331,11 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
       {!isMobileOpen && (
         <button
           onClick={() => setIsMobileOpen(true)}
-          className="fixed top-4 left-4 z-50 lg:hidden flex items-center justify-center w-10 h-10 bg-white rounded-xl shadow-md border border-gray-200 transition-all active:scale-95"
+          className="fixed top-4 left-4 z-50 lg:hidden flex items-center justify-center w-10 h-10 bg-[var(--surface-0)] rounded-xl shadow-md border border-[var(--border-soft)] transition-all active:scale-95"
           aria-label="Open navigation menu"
         >
           {/* Hamburger icon */}
-          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-[var(--text-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -345,7 +347,7 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
           ================================================================ */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/35 z-40 lg:hidden"
           onClick={() => setIsMobileOpen(false)}
           aria-hidden="true"
         />
@@ -367,7 +369,7 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
           // Layer: sidebar must be above backdrop (z-40) but hamburger button is z-50
           'z-40',
           // Background and border
-          'bg-white border-r border-gray-200',
+          'bg-[var(--surface-0)] border-r border-[var(--border-soft)]',
           // Smooth transitions for both the slide and width change
           'transition-all duration-300 ease-in-out',
           // Flex column for vertical stacking of header / nav / user footer
@@ -379,22 +381,25 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
         ].join(' ')}
       >
         {/* Header — logo + collapse/close button */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border-soft)] shrink-0">
           {/* Show logo text when: desktop expanded OR mobile open */}
           {(!isCollapsed || isMobileOpen) && (
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">HomeBase</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Life&apos;s a piece of pie</p>
+            <div className="flex items-start gap-2">
+              <BrandMark className="h-8 w-8 shrink-0" />
+              <div>
+                <h1 className="text-xl font-semibold text-[var(--text-primary)]">Home Base</h1>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">Build a home within yourself.</p>
+              </div>
             </div>
           )}
 
           {/* Mobile: X close button — closes the drawer */}
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors lg:hidden"
+            className="p-2 hover:bg-[var(--surface-1)] rounded-lg transition-colors lg:hidden"
             aria-label="Close navigation menu"
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -402,10 +407,10 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
           {/* Desktop: collapse toggle — switches between icon strip and full sidebar */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden lg:flex p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="hidden lg:flex p-2 hover:bg-[var(--surface-1)] rounded-lg transition-colors"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {isCollapsed ? (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
               ) : (
@@ -477,13 +482,14 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
         {/* User section footer */}
         {/* Show full user info when desktop expanded or mobile open */}
         {(!isCollapsed || isMobileOpen) && (
-          <div className="p-3 border-t border-gray-200 shrink-0">
+          <div className="p-3 border-t border-[var(--border-soft)] shrink-0">
+            <ThemeSwitcher />
             {userEmail && (
-              <div className="text-xs text-gray-500 mb-2 truncate px-1">{userEmail}</div>
+              <div className="text-xs text-[var(--text-muted)] mb-2 truncate px-1">{userEmail}</div>
             )}
             <button
               onClick={onSignOut}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-[var(--accent-lavender)] hover:bg-[var(--accent-soft)] rounded-lg transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -495,10 +501,13 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
 
         {/* Desktop icon-strip footer: show only the sign-out icon */}
         {isCollapsed && !isMobileOpen && (
-          <div className="p-3 border-t border-gray-200 flex justify-center shrink-0">
+          <div className="p-3 border-t border-[var(--border-soft)] flex flex-col items-center gap-2 shrink-0">
+            <div className="mb-2 w-full">
+              <ThemeSwitcher compact />
+            </div>
             <button
               onClick={onSignOut}
-              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-2 text-[var(--accent-lavender)] hover:bg-[var(--accent-soft)] rounded-lg transition-colors"
               title="Sign Out"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

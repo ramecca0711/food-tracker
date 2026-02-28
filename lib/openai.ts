@@ -1,8 +1,11 @@
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Always create the client inside functions — never at module level.
+// Module-level instantiation throws at build time when env vars are absent
+// during Next.js static analysis (next build).
+function getOpenAI(): OpenAI {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
@@ -24,9 +27,14 @@ export interface FoodItem {
 
   provided_by_user?: boolean;
 
-  // 'cache' and 'off' are set when macros come from master_food_database or
-  // OpenFoodFacts respectively (via the get-food-macros lookup chain).
-  source?: 'ai' | 'ai_estimated' | 'ai_user_provided' | 'ai_fixed_from_macros' | 'cache' | 'off';
+  // Source of the nutrition data:
+  //   ai / ai_estimated / ai_fixed_from_macros / ai_user_provided — from parseFood()
+  //   cache  — hit in master_food_database (via get-food-macros)
+  //   off    — from Open Food Facts via get-food-macros
+  //   barcode       — user scanned a product barcode (Open Food Facts direct lookup)
+  //   label_photo   — user photographed a nutrition facts label (GPT-4o-mini vision)
+  // barcode and label_photo are treated as authoritative and never overridden.
+  source?: 'ai' | 'ai_estimated' | 'ai_user_provided' | 'ai_fixed_from_macros' | 'cache' | 'off' | 'barcode' | 'label_photo';
   unverified?: boolean;
 }
 
@@ -167,7 +175,7 @@ function normalizeParsedFood(raw: any): ParsedFood {
 export async function parseFood(description: string): Promise<ParsedFood> {
   const currentHour = new Date().getHours();
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
     top_p: 1,

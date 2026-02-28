@@ -1,7 +1,36 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import BarcodeScanner from '@/app/components/BarcodeScanner';
+import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
+import SourceBadge from '@/app/components/SourceBadge';
+
+type FoodTemplate = {
+  food_name: string;
+  serving_size: string;
+  amount: number;
+  quantity: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
+  base_calories: number;
+  base_protein: number;
+  base_fat: number;
+  base_carbs: number;
+  base_fiber: number;
+  base_sugar: number;
+  base_sodium: number;
+  categories: string[];
+  whole_food_ingredients: string[];
+  source?: string | null;
+  usageCount?: number;
+  lastLoggedAt?: string | null;
+};
 
 export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
@@ -24,14 +53,207 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   const [savedMeals, setSavedMeals] = useState<any[]>([]);
   const [isLoadingSavedMeals, setIsLoadingSavedMeals] = useState(true);
+  const [savedFoods, setSavedFoods] = useState<FoodTemplate[]>([]);
+  const [isLoadingSavedFoods, setIsLoadingSavedFoods] = useState(true);
   const [editingSavedMeal, setEditingSavedMeal] = useState<string | null>(null);
   const [editingSavedMealData, setEditingSavedMealData] = useState<any>(null);
   const [showSavedMeals, setShowSavedMeals] = useState(false);
+  const [showSavedFoods, setShowSavedFoods] = useState(false);
+  const [savedFoodSearch, setSavedFoodSearch] = useState('');
+  const [savedFoodSearchResults, setSavedFoodSearchResults] = useState<FoodTemplate[]>([]);
+  const [isSavedFoodSearching, setIsSavedFoodSearching] = useState(false);
 
   const [showSaveMealModal, setShowSaveMealModal] = useState(false);
   const [mealToSave, setMealToSave] = useState<any>(null);
   const [saveMealName, setSaveMealName] = useState('');
   const [saveMealNotes, setSaveMealNotes] = useState('');
+
+  // ── Scanner modals ─────────────────────────────────────────────────────────
+  // showBarcodeScanner / showLabelCapture toggle the respective modal overlays.
+  // scanTargetMeal + scanTargetItem are set when the scan is triggered from an
+  // expanded item edit panel; null means it's a fresh scan from the main form.
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [showLabelCapture, setShowLabelCapture]     = useState(false);
+  const [scanTargetMeal, setScanTargetMeal]         = useState<number | null>(null);
+  const [scanTargetItem, setScanTargetItem]         = useState<number | null>(null);
+  const [mealAddFoodOpen, setMealAddFoodOpen]       = useState<Set<number>>(new Set());
+  const [mealFoodSearch, setMealFoodSearch]         = useState<Map<number, string>>(new Map());
+  const [mealFoodSearchResults, setMealFoodSearchResults] = useState<Map<number, FoodTemplate[]>>(new Map());
+  const [mealFoodSearching, setMealFoodSearching]   = useState<Map<number, boolean>>(new Map());
+  const mealSearchDebounceTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const [draggingItem, setDraggingItem] = useState<{ mealIndex: number; itemIndex: number } | null>(null);
+  const [dragOverMeal, setDragOverMeal] = useState<number | null>(null);
+
+  const toSafeAmount = (raw: any) => {
+    const n = parseFloat(String(raw));
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  };
+
+  const parseQuantityComposite = (quantityRaw: any) => {
+    const quantity = String(quantityRaw || '').trim();
+    const matched = quantity.match(/^(\d*\.?\d+)\s*[x×]\s+(.+)$/i);
+    if (matched) {
+      return { amount: toSafeAmount(matched[1]), servingSize: matched[2].trim() || '1 serving' };
+    }
+    return { amount: 1, servingSize: quantity || '1 serving' };
+  };
+
+  const formatQuantity = (servingSizeRaw: any, amountRaw: any) => {
+    const servingSize = String(servingSizeRaw || '1 serving').trim() || '1 serving';
+    const amount = toSafeAmount(amountRaw);
+    return amount === 1 ? servingSize : `${amount} x ${servingSize}`;
+  };
+
+  const normalizeItemForEditing = (item: any) => {
+    const parsedQuantity = parseQuantityComposite(item.quantity);
+    const amount = toSafeAmount(item.amount ?? parsedQuantity.amount);
+    const servingSize = String(item.serving_size || parsedQuantity.servingSize || '1 serving').trim() || '1 serving';
+
+    const calories = Number(item.calories) || 0;
+    const protein = Number(item.protein) || 0;
+    const fat = Number(item.fat) || 0;
+    const carbs = Number(item.carbs) || 0;
+    const fiber = Number(item.fiber) || 0;
+    const sugar = Number(item.sugar) || 0;
+    const sodium = Number(item.sodium) || 0;
+
+    const baseCalories = Number.isFinite(Number(item.base_calories)) ? Number(item.base_calories) : calories / amount;
+    const baseProtein = Number.isFinite(Number(item.base_protein)) ? Number(item.base_protein) : protein / amount;
+    const baseFat = Number.isFinite(Number(item.base_fat)) ? Number(item.base_fat) : fat / amount;
+    const baseCarbs = Number.isFinite(Number(item.base_carbs)) ? Number(item.base_carbs) : carbs / amount;
+    const baseFiber = Number.isFinite(Number(item.base_fiber)) ? Number(item.base_fiber) : fiber / amount;
+    const baseSugar = Number.isFinite(Number(item.base_sugar)) ? Number(item.base_sugar) : sugar / amount;
+    const baseSodium = Number.isFinite(Number(item.base_sodium)) ? Number(item.base_sodium) : sodium / amount;
+
+    return {
+      ...item,
+      serving_size: servingSize,
+      amount,
+      base_calories: baseCalories,
+      base_protein: baseProtein,
+      base_fat: baseFat,
+      base_carbs: baseCarbs,
+      base_fiber: baseFiber,
+      base_sugar: baseSugar,
+      base_sodium: baseSodium,
+      quantity: formatQuantity(servingSize, amount),
+      calories: Math.round(baseCalories * amount),
+      protein: Math.round(baseProtein * amount * 10) / 10,
+      fat: Math.round(baseFat * amount * 10) / 10,
+      carbs: Math.round(baseCarbs * amount * 10) / 10,
+      fiber: Math.round(baseFiber * amount * 10) / 10,
+      sugar: Math.round(baseSugar * amount * 10) / 10,
+      sodium: Math.round(baseSodium * amount),
+    };
+  };
+
+  const normalizeMealsForEditing = (meals: any[]) =>
+    (meals || []).map((meal: any) => ({
+      ...meal,
+      items: (meal.items || []).map((item: any) => normalizeItemForEditing(item)),
+    }));
+
+  const toFoodTemplate = (row: any): FoodTemplate =>
+    normalizeItemForEditing({
+      food_name: row.food_name,
+      serving_size: row.serving_size ?? null,
+      amount: row.amount ?? null,
+      quantity: row.quantity,
+      calories: row.calories,
+      protein: row.protein,
+      fat: row.fat,
+      carbs: row.carbs,
+      fiber: row.fiber,
+      sugar: row.sugar,
+      sodium: row.sodium,
+      categories: row.categories || [],
+      whole_food_ingredients: row.whole_food_ingredients || [],
+      source: row.source ?? 'cache',
+    });
+
+  const inferMealTypeForNow = (): 'breakfast' | 'lunch' | 'dinner' | 'snack' => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 10) return 'breakfast';
+    if (hour >= 11 && hour < 15) return 'lunch';
+    if (hour >= 17 && hour < 21) return 'dinner';
+    return 'snack';
+  };
+
+  const addFoodTemplateToMeal = (template: FoodTemplate, mealIndex?: number) => {
+    const item = normalizeItemForEditing({ ...template, unverified: false, provided_by_user: true });
+    const updatedMeals = [...editingMeals];
+    const targetMealIndex = typeof mealIndex === 'number' ? mealIndex : 0;
+
+    if (updatedMeals.length === 0) {
+      const newMeal = { meal_type: inferMealTypeForNow(), confidence: 1.0, items: [item] };
+      setEditingMeals([newMeal]);
+      setParsedData({ meals: [newMeal], cache_candidates: [] });
+      setExpandedItems(new Map([['0', new Set([0])]]));
+      return;
+    }
+
+    if (!updatedMeals[targetMealIndex]) return;
+    updatedMeals[targetMealIndex].items = [...(updatedMeals[targetMealIndex].items || []), item];
+    setEditingMeals(updatedMeals);
+
+    const newExpanded = new Map(expandedItems);
+    const key = String(targetMealIndex);
+    const newIndex = updatedMeals[targetMealIndex].items.length - 1;
+    if (!newExpanded.has(key)) newExpanded.set(key, new Set());
+    newExpanded.get(key)!.add(newIndex);
+    setExpandedItems(newExpanded);
+  };
+
+  const searchFoodsInDb = async (query: string) => {
+    if (!userId || !query.trim()) return [] as FoodTemplate[];
+
+    const trimmedQuery = query.trim();
+    const { data: personalData, error: personalError } = await supabase
+      .from('food_items')
+      .select('food_name, quantity, calories, protein, fat, carbs, fiber, sugar, sodium, categories, whole_food_ingredients, source, logged_at')
+      .eq('user_id', userId)
+      .ilike('food_name', `%${trimmedQuery}%`)
+      .order('logged_at', { ascending: false })
+      .limit(250);
+
+    const { data: globalData } = await supabase
+      .from('master_food_database')
+      .select('food_name, serving_size_label, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, fiber_per_100g, sugar_per_100g, sodium_mg_per_100g, times_used')
+      .or(`food_name.ilike.%${trimmedQuery}%,normalized_name.ilike.%${trimmedQuery}%`)
+      .order('times_used', { ascending: false })
+      .limit(100);
+
+    if (personalError && !globalData) return [] as FoodTemplate[];
+
+    const deduped = new Map<string, any>();
+    for (const row of personalData || []) {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key || deduped.has(key)) continue;
+      deduped.set(key, row);
+    }
+
+    for (const row of globalData || []) {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key || deduped.has(key)) continue;
+      deduped.set(key, {
+        food_name: row.food_name,
+        quantity: row.serving_size_label || '100g',
+        calories: Number(row.calories_per_100g) || 0,
+        protein: Number(row.protein_per_100g) || 0,
+        fat: Number(row.fat_per_100g) || 0,
+        carbs: Number(row.carbs_per_100g) || 0,
+        fiber: Number(row.fiber_per_100g) || 0,
+        sugar: Number(row.sugar_per_100g) || 0,
+        sodium: Number(row.sodium_mg_per_100g) || 0,
+        categories: [],
+        whole_food_ingredients: [],
+        source: 'cache',
+        logged_at: null,
+      });
+    }
+
+    return Array.from(deduped.values()).map(toFoodTemplate).slice(0, 10);
+  };
 
   // ============================================================================
   // LOAD SAVED MEALS
@@ -39,6 +261,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
   useEffect(() => {
     loadSavedMeals();
+    loadSavedFoods();
   }, [userId]);
 
   const loadSavedMeals = async () => {
@@ -57,6 +280,56 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
 
     if (data) setSavedMeals(data);
     setIsLoadingSavedMeals(false);
+  };
+
+  const loadSavedFoods = async () => {
+    if (!userId) {
+      setSavedFoods([]);
+      setIsLoadingSavedFoods(false);
+      return;
+    }
+
+    setIsLoadingSavedFoods(true);
+
+    const { data, error } = await supabase
+      .from('food_items')
+      .select('food_name, quantity, calories, protein, fat, carbs, fiber, sugar, sodium, categories, whole_food_ingredients, source, logged_at')
+      .eq('user_id', userId)
+      .order('logged_at', { ascending: false })
+      .limit(2000);
+
+    if (error || !data) {
+      setSavedFoods([]);
+      setIsLoadingSavedFoods(false);
+      return;
+    }
+
+    const grouped = new Map<string, { row: any; count: number; lastLoggedAt: string }>();
+    data.forEach((row: any) => {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key) return;
+      if (!grouped.has(key)) {
+        grouped.set(key, { row, count: 1, lastLoggedAt: row.logged_at });
+      } else {
+        const existing = grouped.get(key)!;
+        existing.count += 1;
+      }
+    });
+
+    const frequent = Array.from(grouped.values())
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return new Date(b.lastLoggedAt).getTime() - new Date(a.lastLoggedAt).getTime();
+      })
+      .slice(0, 10)
+      .map(({ row, count, lastLoggedAt }) => ({
+        ...toFoodTemplate(row),
+        usageCount: count,
+        lastLoggedAt,
+      }));
+
+    setSavedFoods(frequent);
+    setIsLoadingSavedFoods(false);
   };
 
   // ============================================================================
@@ -102,8 +375,9 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         )
       );
 
-      setParsedData(data);
-      setEditingMeals(data.meals || []);
+      const normalizedMeals = normalizeMealsForEditing(data.meals || []);
+      setParsedData({ ...data, meals: normalizedMeals });
+      setEditingMeals(normalizedMeals);
       setExpandedItems(new Map());
 
       const notesMap = new Map<number, string>();
@@ -150,32 +424,61 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setEditingMeals(updated);
   };
 
-  const handleItemEdit = (mealIndex: number, itemIndex: number, field: string, value: any) => {
-    const updated = [...editingMeals];
+  const applyScaledItemEdit = (itemRaw: any, field: string, value: any) => {
+    const currentItem = normalizeItemForEditing(itemRaw);
+
+    if (field === 'amount') {
+      const amount = toSafeAmount(value);
+      return normalizeItemForEditing({ ...currentItem, amount });
+    }
+
+    if (field === 'serving_size') {
+      return normalizeItemForEditing({
+        ...currentItem,
+        serving_size: String(value || ''),
+      });
+    }
 
     if (field === 'quantity') {
-      // Scale all macros proportionally when the user changes quantity
-      const oldQty = parseFloat(updated[mealIndex].items[itemIndex].quantity) || 1;
-      const newQty = parseFloat(value) || 1;
-      const ratio = newQty / oldQty;
-      const item = updated[mealIndex].items[itemIndex];
-      updated[mealIndex].items[itemIndex] = {
-        ...item,
-        quantity: value,
-        calories: Math.round(item.calories * ratio),
-        protein:  Math.round(item.protein  * ratio * 10) / 10,
-        fat:      Math.round(item.fat      * ratio * 10) / 10,
-        carbs:    Math.round(item.carbs    * ratio * 10) / 10,
-        fiber:    Math.round(item.fiber    * ratio * 10) / 10,
-        sugar:    Math.round(item.sugar    * ratio * 10) / 10,
-        sodium:   Math.round(item.sodium   * ratio),
-      };
-    } else {
-      updated[mealIndex].items[itemIndex] = {
-        ...updated[mealIndex].items[itemIndex],
-        [field]: value,
-      };
+      const parsed = parseQuantityComposite(value);
+      return normalizeItemForEditing({
+        ...currentItem,
+        amount: parsed.amount,
+        serving_size: parsed.servingSize,
+      });
     }
+
+    if (
+      field === 'calories' ||
+      field === 'protein' ||
+      field === 'fat' ||
+      field === 'carbs' ||
+      field === 'fiber' ||
+      field === 'sugar' ||
+      field === 'sodium'
+    ) {
+      const numericValue = Number(value) || 0;
+      const amount = toSafeAmount(currentItem.amount);
+      return normalizeItemForEditing({
+        ...currentItem,
+        [field]: numericValue,
+        [`base_${field}`]: numericValue / amount,
+      });
+    }
+
+    return {
+      ...currentItem,
+      [field]: value,
+    };
+  };
+
+  const handleItemEdit = (mealIndex: number, itemIndex: number, field: string, value: any) => {
+    const updated = [...editingMeals];
+    updated[mealIndex].items[itemIndex] = applyScaledItemEdit(
+      updated[mealIndex].items[itemIndex],
+      field,
+      value
+    );
     setEditingMeals(updated);
   };
 
@@ -189,6 +492,87 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     const newEatingOut = new Map(mealEatingOut);
     newEatingOut.set(mealIndex, !newEatingOut.get(mealIndex));
     setMealEatingOut(newEatingOut);
+  };
+
+  const addEmptyMeal = () => {
+    const newMeal = {
+      meal_type: inferMealTypeForNow(),
+      confidence: 1.0,
+      items: [],
+    };
+    const newMealIndex = editingMeals.length;
+    setEditingMeals([...editingMeals, newMeal]);
+    setParsedData((prev: any) =>
+      prev
+        ? { ...prev, meals: [...(prev.meals || []), newMeal] }
+        : { meals: [newMeal], cache_candidates: [] }
+    );
+    setMealAddFoodOpen((prev) => {
+      const next = new Set(prev);
+      next.add(newMealIndex);
+      return next;
+    });
+  };
+
+  const moveItemToMeal = (targetMealIndex: number) => {
+    if (!draggingItem) return;
+    const { mealIndex: sourceMealIndex, itemIndex: sourceItemIndex } = draggingItem;
+    setDragOverMeal(null);
+
+    if (sourceMealIndex === targetMealIndex) {
+      setDraggingItem(null);
+      return;
+    }
+
+    const sourceMeal = editingMeals[sourceMealIndex];
+    const targetMeal = editingMeals[targetMealIndex];
+    if (!sourceMeal || !targetMeal || !sourceMeal.items?.[sourceItemIndex]) {
+      setDraggingItem(null);
+      return;
+    }
+
+    const movedItem = sourceMeal.items[sourceItemIndex];
+    const updatedMeals = editingMeals.map((meal) => ({
+      ...meal,
+      items: [...(meal.items || [])],
+    }));
+
+    updatedMeals[sourceMealIndex].items.splice(sourceItemIndex, 1);
+    updatedMeals[targetMealIndex].items.push(movedItem);
+    setEditingMeals(updatedMeals);
+
+    const nextExpanded = new Map<string, Set<number>>();
+    expandedItems.forEach((set, key) => {
+      nextExpanded.set(key, new Set(set));
+    });
+
+    const sourceKey = String(sourceMealIndex);
+    const sourceSet = new Set(nextExpanded.get(sourceKey) || []);
+    sourceSet.delete(sourceItemIndex);
+    const adjustedSourceSet = new Set<number>();
+    sourceSet.forEach((index) => adjustedSourceSet.add(index > sourceItemIndex ? index - 1 : index));
+    if (adjustedSourceSet.size > 0) nextExpanded.set(sourceKey, adjustedSourceSet);
+    else nextExpanded.delete(sourceKey);
+
+    const targetKey = String(targetMealIndex);
+    const targetSet = new Set(nextExpanded.get(targetKey) || []);
+    targetSet.add(updatedMeals[targetMealIndex].items.length - 1);
+    nextExpanded.set(targetKey, targetSet);
+
+    setExpandedItems(nextExpanded);
+    setDraggingItem(null);
+  };
+
+  // Remove a single item from editingMeals. If it was the last item in its
+  // meal group, the whole meal row is removed too.
+  const handleDeleteItem = (mealIndex: number, itemIndex: number) => {
+    const updated = editingMeals
+      .map((meal, mi) => {
+        if (mi !== mealIndex) return meal;
+        return { ...meal, items: meal.items.filter((_: any, ii: number) => ii !== itemIndex) };
+      })
+      .filter((meal) => meal.items.length > 0); // drop now-empty meals
+    setEditingMeals(updated);
   };
 
   // ============================================================================
@@ -212,7 +596,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         const mealItems = (meal.items || []).map((item: any) => ({
           user_id:                userId,
           food_name:              item.food_name,
-          quantity:               item.quantity,
+          quantity:               formatQuantity(item.serving_size || item.quantity, item.amount || 1),
           calories:               parseInt(item.calories)   || 0,
           protein:                parseFloat(item.protein)  || 0,
           fat:                    parseFloat(item.fat)      || 0,
@@ -227,6 +611,9 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
           notes:                  mealNotes.get(i)           || null,
           eating_out:             mealEatingOut.get(i)       || false,
           logged_at:              selectedDateTime.toISOString(),
+          // Persist the macro source so we can display it on the dashboard
+          // and audit data quality over time.
+          source:                 item.source                || null,
         }));
 
         allItemsToInsert.push(...mealItems);
@@ -239,10 +626,19 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       console.log('✅ Saved all meals to database!');
 
       // ── 3. Write cache candidates to master_food_database ──────────────────
-      // cache_candidates are foods discovered via OpenFoodFacts or AI during parsing.
-      // We defer writing them until the user explicitly confirms the log entry so we
-      // don't pollute the database with food data from sessions the user abandoned.
-      const candidates: any[] = parsedData?.cache_candidates ?? [];
+      // Two sources of candidates:
+      //   a) parsedData.cache_candidates — foods from OpenFoodFacts or AI during
+      //      text parsing (deferred write to avoid DB pollution on abandoned sessions).
+      //   b) per-item cache_candidates embedded in barcode-scanned items — per-100g
+      //      OFF data returned by /api/lookup-barcode so the same product hits the
+      //      local cache on future lookups instead of querying OFF again.
+      const parsesCandidates: any[] = parsedData?.cache_candidates ?? [];
+      const scanCandidates: any[] = editingMeals
+        .flatMap((m: any) => m.items as any[])
+        .map((item: any) => item.cache_candidate)
+        .filter(Boolean);
+
+      const candidates = [...parsesCandidates, ...scanCandidates];
       if (candidates.length > 0) {
         const { error: cacheError } = await supabase
           .from('master_food_database')
@@ -304,6 +700,132 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   };
 
   // ============================================================================
+  // SCAN RESULT HANDLER
+  // ============================================================================
+
+  // Called by both BarcodeScanner and NutritionLabelCapture when they return data.
+  //
+  // Two modes:
+  //   • Item-edit mode  (scanTargetMeal/Item are set): replaces the macros of a
+  //     specific parsed item in editingMeals with the scanned facts.
+  //   • New-item mode   (no target set): appends a new item to the current meal
+  //     list, or creates a new single-item meal if nothing has been parsed yet.
+  //
+  // Scanned data is always treated as authoritative — source is 'barcode' or
+  // 'label_photo', provided_by_user: true — so the lookup chain will never
+  // override it when the item eventually reaches parse-food or get-food-macros.
+  //
+  // cache_candidate (barcode only): per-100g OFF data to write to
+  // master_food_database on confirm, so the same product hits the local cache
+  // on future lookups instead of querying OFF again.
+  const handleScanResult = (scanData: any) => {
+    const scannedServingSize = String(scanData.serving_size || scanData.quantity || '1 serving');
+    const scannedItem = {
+      food_name:              String(scanData.food_name  || 'Scanned item'),
+      serving_size:           scannedServingSize,
+      amount:                 toSafeAmount(scanData.amount ?? 1),
+      quantity:               formatQuantity(scannedServingSize, scanData.amount ?? 1),
+      calories:               Number(scanData.calories)  || 0,
+      protein:                Number(scanData.protein)   || 0,
+      fat:                    Number(scanData.fat)       || 0,
+      carbs:                  Number(scanData.carbs)     || 0,
+      fiber:                  Number(scanData.fiber)     || 0,
+      sugar:                  Number(scanData.sugar)     || 0,
+      sodium:                 Number(scanData.sodium)    || 0,
+      base_calories:          Number(scanData.base_calories ?? scanData.calories) || 0,
+      base_protein:           Number(scanData.base_protein  ?? scanData.protein)  || 0,
+      base_fat:               Number(scanData.base_fat      ?? scanData.fat)      || 0,
+      base_carbs:             Number(scanData.base_carbs    ?? scanData.carbs)    || 0,
+      base_fiber:             Number(scanData.base_fiber    ?? scanData.fiber)    || 0,
+      base_sugar:             Number(scanData.base_sugar    ?? scanData.sugar)    || 0,
+      base_sodium:            Number(scanData.base_sodium   ?? scanData.sodium)   || 0,
+      categories:             scanData.categories             || [],
+      whole_food_ingredients: scanData.whole_food_ingredients || [],
+      source:                 scanData.source, // 'barcode' or 'label_photo'
+      provided_by_user:       true,            // treated as user-verified fact
+      unverified:             false,
+      // Carry the per-100g cache candidate so handleConfirm can write it to
+      // master_food_database. Only present for barcode scans that had 100g data.
+      cache_candidate:        scanData.cache_candidate ?? null,
+    };
+
+    if (scanTargetMeal !== null && scanTargetItem !== null) {
+      // Replace macros on an existing parsed item, preserving the expanded state
+      // so the user can immediately see the autofilled fields.
+      const updated = [...editingMeals];
+      updated[scanTargetMeal].items[scanTargetItem] = {
+        ...updated[scanTargetMeal].items[scanTargetItem],
+        ...normalizeItemForEditing(scannedItem),
+      };
+      setEditingMeals(updated);
+      setScanTargetMeal(null);
+      setScanTargetItem(null);
+      // The item-edit panel was already expanded — no need to change expandedItems.
+    } else {
+      // New scan: auto-assign a meal type based on the current time of day
+      const hour = new Date().getHours();
+      let meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack' = 'snack';
+      if (hour >= 5  && hour < 10) meal_type = 'breakfast';
+      else if (hour >= 11 && hour < 15) meal_type = 'lunch';
+      else if (hour >= 17 && hour < 21) meal_type = 'dinner';
+
+      if (editingMeals.length > 0) {
+        // Append to the first meal in the current parse session
+        const updated = [...editingMeals];
+        updated[0].items = [...(updated[0].items || []), normalizeItemForEditing(scannedItem)];
+        setEditingMeals(updated);
+
+        // Auto-expand the newly appended item so the user sees all fields filled in
+        const newItemIndex = updated[0].items.length - 1;
+        const newExpanded = new Map(expandedItems);
+        if (!newExpanded.has('0')) newExpanded.set('0', new Set());
+        newExpanded.get('0')!.add(newItemIndex);
+        setExpandedItems(newExpanded);
+      } else {
+        // Nothing parsed yet — bootstrap a new meal from this scan alone
+        const newMeal = { meal_type, confidence: 1.0, items: [normalizeItemForEditing(scannedItem)] };
+        setEditingMeals([newMeal]);
+        setParsedData({ meals: [newMeal], cache_candidates: [] });
+
+        // Auto-expand the first (and only) item so all fields are immediately visible
+        setExpandedItems(new Map([['0', new Set([0])]]));
+      }
+    }
+
+    // Close whichever scanner modal was open
+    setShowBarcodeScanner(false);
+    setShowLabelCapture(false);
+  };
+
+  // Open the barcode scanner targeting a specific item (item-edit mode)
+  const openBarcodeScannerForItem = (mealIndex: number, itemIndex: number) => {
+    setScanTargetMeal(mealIndex);
+    setScanTargetItem(itemIndex);
+    setShowBarcodeScanner(true);
+  };
+
+  // Open the label capture targeting a specific item (item-edit mode)
+  const openLabelCaptureForItem = (mealIndex: number, itemIndex: number) => {
+    setScanTargetMeal(mealIndex);
+    setScanTargetItem(itemIndex);
+    setShowLabelCapture(true);
+  };
+
+  // Open the barcode scanner in new-item mode (from the main form)
+  const openBarcodeScannerNew = () => {
+    setScanTargetMeal(null);
+    setScanTargetItem(null);
+    setShowBarcodeScanner(true);
+  };
+
+  // Open the label capture in new-item mode (from the main form)
+  const openLabelCaptureNew = () => {
+    setScanTargetMeal(null);
+    setScanTargetItem(null);
+    setShowLabelCapture(true);
+  };
+
+  // ============================================================================
   // SAVE MEAL FOR REUSE
   // ============================================================================
 
@@ -346,7 +868,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setEditingSavedMealData({
       meal_name: meal.meal_name,
       meal_type: meal.meal_type,
-      items:     JSON.parse(JSON.stringify(meal.items)),
+      items:     JSON.parse(JSON.stringify(meal.items)).map((item: any) => normalizeItemForEditing(item)),
       notes:     meal.notes || '',
     });
   };
@@ -360,7 +882,10 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         .update({
           meal_name: editingSavedMealData.meal_name,
           meal_type: editingSavedMealData.meal_type,
-          items:     editingSavedMealData.items,
+          items:     editingSavedMealData.items.map((item: any) => ({
+            ...normalizeItemForEditing(item),
+            quantity: formatQuantity(item.serving_size || item.quantity, item.amount || 1),
+          })),
           notes:     editingSavedMealData.notes,
         })
         .eq('id', mealId)
@@ -385,7 +910,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const updateEditingSavedMealItem = (itemIndex: number, field: string, value: any) => {
     if (!editingSavedMealData) return;
     const updated = { ...editingSavedMealData };
-    updated.items[itemIndex] = { ...updated.items[itemIndex], [field]: value };
+    updated.items[itemIndex] = applyScaledItemEdit(updated.items[itemIndex], field, value);
     setEditingSavedMealData(updated);
   };
 
@@ -403,7 +928,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
       const itemsToInsert = savedMeal.items.map((item: any) => ({
         user_id:                userId,
         food_name:              item.food_name,
-        quantity:               item.quantity,
+        quantity:               formatQuantity(item.serving_size || item.quantity, item.amount || 1),
         calories:               parseInt(item.calories)   || 0,
         protein:                parseFloat(item.protein)  || 0,
         fat:                    parseFloat(item.fat)      || 0,
@@ -462,6 +987,88 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     return `${emoji} ${type.charAt(0).toUpperCase() + type.slice(1)}`;
   };
 
+  const runSavedFoodsSearch = async () => {
+    const query = savedFoodSearch.trim();
+    if (!query) {
+      setSavedFoodSearchResults([]);
+      return;
+    }
+    setIsSavedFoodSearching(true);
+    const results = await searchFoodsInDb(query);
+    setSavedFoodSearchResults(results);
+    setIsSavedFoodSearching(false);
+  };
+
+  useEffect(() => {
+    const query = savedFoodSearch.trim();
+    if (!query) {
+      setSavedFoodSearchResults([]);
+      setIsSavedFoodSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runSavedFoodsSearch();
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [savedFoodSearch]);
+
+  const toggleMealAddFood = (mealIndex: number) => {
+    const next = new Set(mealAddFoodOpen);
+    if (next.has(mealIndex)) next.delete(mealIndex);
+    else next.add(mealIndex);
+    setMealAddFoodOpen(next);
+  };
+
+  const setMealSearchText = (mealIndex: number, value: string) => {
+    const next = new Map(mealFoodSearch);
+    next.set(mealIndex, value);
+    setMealFoodSearch(next);
+
+    const existingTimer = mealSearchDebounceTimers.current.get(mealIndex);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    const query = value.trim();
+    if (!query) {
+      const nextResults = new Map(mealFoodSearchResults);
+      nextResults.set(mealIndex, []);
+      setMealFoodSearchResults(nextResults);
+
+      const nextLoading = new Map(mealFoodSearching);
+      nextLoading.set(mealIndex, false);
+      setMealFoodSearching(nextLoading);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runMealFoodSearch(mealIndex, query);
+    }, 250);
+    mealSearchDebounceTimers.current.set(mealIndex, timer);
+  };
+
+  const runMealFoodSearch = async (mealIndex: number, queryOverride?: string) => {
+    const query = queryOverride ?? mealFoodSearch.get(mealIndex)?.trim() ?? '';
+    if (!query) {
+      const nextResults = new Map(mealFoodSearchResults);
+      nextResults.set(mealIndex, []);
+      setMealFoodSearchResults(nextResults);
+      return;
+    }
+    const nextLoading = new Map(mealFoodSearching);
+    nextLoading.set(mealIndex, true);
+    setMealFoodSearching(nextLoading);
+
+    const results = await searchFoodsInDb(query);
+    const nextResults = new Map(mealFoodSearchResults);
+    nextResults.set(mealIndex, results);
+    setMealFoodSearchResults(nextResults);
+
+    const loadingDone = new Map(mealFoodSearching);
+    loadingDone.set(mealIndex, false);
+    setMealFoodSearching(loadingDone);
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -514,25 +1121,35 @@ Examples:
             disabled={isLoading || !!parsedData}
           />
 
-          <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-            <input
-              id="label-photo-input"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                console.log('Label photo selected:', file.name);
-              }}
-            />
-            <label
-              htmlFor="label-photo-input"
-              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 hover:bg-gray-50"
+          {/* Scan shortcuts — barcode or nutrition label photo — add item without typing */}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={openBarcodeScannerNew}
+              disabled={isLoading}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
-              Add label photo
-            </label>
-            <span className="text-xs text-gray-500">Optional</span>
+              {/* Barcode icon */}
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6h2v12H4V6zm3 0h1v12H7V6zm2 0h2v12H9V6zm3 0h1v12h-1V6zm2 0h2v12h-2V6zm3 0h1v12h-1V6z" />
+              </svg>
+              Scan Barcode
+            </button>
+            <button
+              type="button"
+              onClick={openLabelCaptureNew}
+              disabled={isLoading}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {/* Camera / label icon */}
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Scan Label
+            </button>
           </div>
 
           <button
@@ -560,6 +1177,16 @@ Examples:
               <div className="text-sm text-blue-700">
                 {editingMeals.map((meal) => formatMealType(meal.meal_type)).join(' · ')}
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addEmptyMeal}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 hover:bg-blue-100"
+                >
+                  + Add Meal
+                </button>
+                <span className="text-xs text-blue-700">Drag food items between meal cards to reorganize.</span>
+              </div>
             </div>
 
             <div className="space-y-6">
@@ -575,7 +1202,24 @@ Examples:
                 );
 
                 return (
-                  <div key={mealIndex} className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                  <div
+                    key={mealIndex}
+                    className={`border-2 rounded-xl overflow-hidden transition-colors ${
+                      dragOverMeal === mealIndex ? 'border-blue-500 bg-blue-50/30' : 'border-gray-200'
+                    }`}
+                    onDragOver={(e) => {
+                      if (!draggingItem || draggingItem.mealIndex === mealIndex) return;
+                      e.preventDefault();
+                      if (dragOverMeal !== mealIndex) setDragOverMeal(mealIndex);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverMeal === mealIndex) setDragOverMeal(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      moveItemToMeal(mealIndex);
+                    }}
+                  >
                     <div className="bg-gray-50 px-5 py-4 border-b border-gray-200">
                       <div className="flex items-start justify-between mb-4">
                         <div>
@@ -653,26 +1297,34 @@ Examples:
                         const isExpanded = expandedItems.get(`${mealIndex}`)?.has(itemIndex);
 
                         return (
-                          <div key={itemIndex} className="border border-gray-200 rounded-lg overflow-hidden">
-                            <button
-                              type="button"
+                          <div
+                            key={itemIndex}
+                            className="border border-gray-200 rounded-lg overflow-hidden"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = 'move';
+                              setDraggingItem({ mealIndex, itemIndex });
+                            }}
+                            onDragEnd={() => {
+                              setDraggingItem(null);
+                              setDragOverMeal(null);
+                            }}
+                          >
+                            {/* Compact card header — click anywhere to expand, × to delete.
+                                Using a div (not button) to allow the nested delete button
+                                without violating the button-in-button HTML rule.          */}
+                            <div
                               onClick={() => toggleExpand(mealIndex, itemIndex)}
-                              className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
+                              className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between cursor-pointer"
                             >
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900">{item.food_name}</div>
                                 <div className="text-sm text-gray-600 mt-0.5">
-                                  {item.quantity} · {item.calories} cal ·
+                                  {formatQuantity(item.serving_size || item.quantity, item.amount || 1)} · {item.calories} cal ·
                                   P: {item.protein}g · F: {item.fat}g · C: {item.carbs}g
                                 </div>
-                                {item.source && (
-                                  <div className="mt-1 text-[11px] text-gray-500">
-                                    Source: <span className="font-medium">{item.source}</span>
-                                    {item.unverified && (
-                                      <span className="ml-1 text-amber-600 font-medium">· unverified</span>
-                                    )}
-                                  </div>
-                                )}
+                                {/* Source badge — shows where macros came from (database, barcode, AI, etc.) */}
+                                <SourceBadge source={item.source} unverified={item.unverified} />
                                 {item.match_description && typeof item.match_score === 'number' && (
                                   <div className="mt-1 text-[11px] text-gray-500">
                                     Matched: <span className="font-medium">{item.match_description}</span> ·
@@ -680,17 +1332,41 @@ Examples:
                                   </div>
                                 )}
                               </div>
-                              <svg
-                                className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+
+                              {/* Right side: delete × and expand chevron */}
+                              <div
+                                className="flex items-center gap-1 ml-2 shrink-0"
+                                onClick={(e) => e.stopPropagation()} // prevent expand toggle
                               >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(mealIndex, itemIndex)}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Remove item"
+                                  aria-label="Remove item"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                                {/* Chevron — still clickable via the parent div's onClick */}
+                                <div
+                                  onClick={() => toggleExpand(mealIndex, itemIndex)}
+                                  className="cursor-pointer p-1"
+                                >
+                                  <svg
+                                    className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
 
                             {isExpanded && (
                               <div className="p-3 pt-0 border-t border-gray-200 bg-gray-50 space-y-3">
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                   <div>
                                     <label className="text-xs text-gray-600 mb-1.5 block font-medium">Food Name</label>
                                     <input
@@ -701,11 +1377,22 @@ Examples:
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-600 mb-1.5 block font-medium">Quantity (auto-adjusts macros)</label>
+                                    <label className="text-xs text-gray-600 mb-1.5 block font-medium">Serving size</label>
                                     <input
                                       type="text"
-                                      value={item.quantity}
-                                      onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'quantity', e.target.value)}
+                                      value={item.serving_size || item.quantity}
+                                      onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'serving_size', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-600 mb-1.5 block font-medium">Amount</label>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0.1"
+                                      value={item.amount ?? 1}
+                                      onChange={(e) => handleItemEdit(mealIndex, itemIndex, 'amount', e.target.value)}
                                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
                                     />
                                   </div>
@@ -761,6 +1448,38 @@ Examples:
                                   </div>
                                 </div>
 
+                                {/* Override with a verified scan — replaces macros for this item only */}
+                                <div className="pt-1">
+                                  <label className="text-xs text-gray-500 mb-1.5 block">
+                                    Override with scan (takes priority over AI estimates)
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openBarcodeScannerForItem(mealIndex, itemIndex)}
+                                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                    >
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                          d="M4 6h2v12H4V6zm3 0h1v12H7V6zm2 0h2v12H9V6zm3 0h1v12h-1V6zm2 0h2v12h-2V6zm3 0h1v12h-1V6z" />
+                                      </svg>
+                                      Scan Barcode
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openLabelCaptureForItem(mealIndex, itemIndex)}
+                                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition-colors"
+                                    >
+                                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      </svg>
+                                      Scan Label
+                                    </button>
+                                  </div>
+                                </div>
+
                                 {item.categories && item.categories.length > 0 && (
                                   <div className="flex gap-2 flex-wrap">
                                     {item.categories.map((cat: string, i: number) => (
@@ -775,6 +1494,82 @@ Examples:
                           </div>
                         );
                       })}
+                    </div>
+
+                    <div className="px-4 pb-4 bg-white border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => toggleMealAddFood(mealIndex)}
+                        className="mt-3 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        {mealAddFoodOpen.has(mealIndex) ? 'Hide Add Food' : 'Add Food'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addEmptyMeal}
+                        className="mt-2 w-full px-3 py-2 border border-blue-200 bg-blue-50 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100"
+                      >
+                        + Add Meal
+                      </button>
+
+                      {mealAddFoodOpen.has(mealIndex) && (
+                        <div className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <div>
+                            <input
+                              type="text"
+                              value={mealFoodSearch.get(mealIndex) || ''}
+                              onChange={(e) => setMealSearchText(mealIndex, e.target.value)}
+                              placeholder="Search your food history..."
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="text-xs font-medium text-gray-600 mb-2">Frequent foods</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {savedFoods.slice(0, 6).map((food) => (
+                                <button
+                                  key={`meal-${mealIndex}-frequent-${food.food_name}`}
+                                  type="button"
+                                  onClick={() => addFoodTemplateToMeal(food, mealIndex)}
+                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 text-gray-700"
+                                >
+                                  + {food.food_name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {mealFoodSearching.get(mealIndex) ? (
+                            <div className="text-xs text-gray-500">Searching...</div>
+                          ) : (
+                            (mealFoodSearchResults.get(mealIndex) || []).length > 0 && (
+                              <div className="space-y-1.5">
+                                {(mealFoodSearchResults.get(mealIndex) || []).map((food, idx) => (
+                                  <div
+                                    key={`meal-${mealIndex}-search-${food.food_name}-${idx}`}
+                                    className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-md px-2 py-1.5"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="text-sm text-gray-900 truncate">{food.food_name}</div>
+                                      <div className="text-xs text-gray-500 truncate">
+                                        {formatQuantity(food.serving_size || food.quantity, food.amount || 1)} · {food.calories} cal
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addFoodTemplateToMeal(food, mealIndex)}
+                                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -915,7 +1710,7 @@ Examples:
                             <div className="space-y-3">
                               {editingSavedMealData.items.map((item: any, idx: number) => (
                                 <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                  <div className="grid grid-cols-2 gap-2 mb-3">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Food Name</label>
                                       <input
@@ -926,11 +1721,22 @@ Examples:
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Serving size</label>
                                       <input
                                         type="text"
-                                        value={item.quantity}
-                                        onChange={(e) => updateEditingSavedMealItem(idx, 'quantity', e.target.value)}
+                                        value={item.serving_size || item.quantity}
+                                        onChange={(e) => updateEditingSavedMealItem(idx, 'serving_size', e.target.value)}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0.1"
+                                        value={item.amount ?? 1}
+                                        onChange={(e) => updateEditingSavedMealItem(idx, 'amount', e.target.value)}
                                         className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                                       />
                                     </div>
@@ -1070,6 +1876,132 @@ Examples:
           </div>
         )}
       </div>
+
+      {/* SAVED FOODS SECTION */}
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-200 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setShowSavedFoods(!showSavedFoods)}
+          className="w-full p-5 sm:p-6 flex items-center justify-between hover:bg-emerald-100/50 transition-colors"
+        >
+          <div>
+            <h2 className="text-lg font-semibold text-emerald-900 flex items-center gap-2">
+              Saved Foods
+              <span className="text-sm font-normal text-emerald-600">({savedFoods.length})</span>
+            </h2>
+            <p className="text-sm text-emerald-700 mt-1">Top 10 foods you use most often</p>
+          </div>
+          <svg
+            className={`w-6 h-6 text-emerald-700 transition-transform ${showSavedFoods ? 'rotate-180' : ''}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showSavedFoods && (
+          <div className="px-5 sm:px-6 pb-5 sm:pb-6 border-t border-emerald-200">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 mt-4 mb-4">
+              <input
+                type="text"
+                value={savedFoodSearch}
+                onChange={(e) => setSavedFoodSearch(e.target.value)}
+                placeholder="Search foods in your database..."
+                className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-white"
+              />
+              <button
+                type="button"
+                onClick={runSavedFoodsSearch}
+                className="px-4 py-2 bg-emerald-700 text-white text-sm rounded-lg hover:bg-emerald-800"
+              >
+                Search
+              </button>
+            </div>
+
+            {isSavedFoodSearching && (
+              <div className="text-sm text-emerald-700 mb-3">Searching...</div>
+            )}
+
+            {savedFoodSearchResults.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {savedFoodSearchResults.map((food, idx) => (
+                  <div
+                    key={`saved-food-search-${food.food_name}-${idx}`}
+                    className="bg-white border border-emerald-200 rounded-lg p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{food.food_name}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {formatQuantity(food.serving_size || food.quantity, food.amount || 1)} · {food.calories} cal
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addFoodTemplateToMeal(food)}
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {isLoadingSavedFoods ? (
+              <div className="text-sm text-emerald-700">Loading saved foods...</div>
+            ) : savedFoods.length === 0 ? (
+              <div className="text-sm text-emerald-700">No frequent foods yet. Log foods to build your list.</div>
+            ) : (
+              <div className="space-y-2">
+                {savedFoods.map((food, idx) => (
+                  <div
+                    key={`saved-food-${food.food_name}-${idx}`}
+                    className="bg-white border border-emerald-200 rounded-lg p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{food.food_name}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {formatQuantity(food.serving_size || food.quantity, food.amount || 1)} · {food.calories} cal
+                        {typeof food.usageCount === 'number' ? ` · used ${food.usageCount}x` : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addFoodTemplateToMeal(food)}
+                      className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-md hover:bg-green-700"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* BARCODE SCANNER MODAL */}
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onResult={handleScanResult}
+          onClose={() => {
+            setShowBarcodeScanner(false);
+            setScanTargetMeal(null);
+            setScanTargetItem(null);
+          }}
+        />
+      )}
+
+      {/* NUTRITION LABEL CAPTURE MODAL */}
+      {showLabelCapture && (
+        <NutritionLabelCapture
+          onResult={handleScanResult}
+          onClose={() => {
+            setShowLabelCapture(false);
+            setScanTargetMeal(null);
+            setScanTargetItem(null);
+          }}
+        />
+      )}
 
       {/* SAVE MEAL MODAL */}
       {showSaveMealModal && (

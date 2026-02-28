@@ -1,26 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --app-bg: #edf2ec;
+  --surface-0: #f7faf6;
+  --surface-1: #eef3ee;
+  --text-primary: #203123;
+  --text-muted: #516456;
+  --accent-strong: #295136;
+  --accent-soft: #d6e7da;
+  --accent-lavender: #8f81b4;
+  --border-soft: #cfddd0;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--app-bg);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html[data-ui-variant='forest-bloom'] {
+  --app-bg: #f2f3f8;
+  --surface-0: #fafbff;
+  --surface-1: #f0f1f7;
+  --text-primary: #24362a;
+  --text-muted: #5f6672;
+  --accent-strong: #365f43;
+  --accent-soft: #dedaf0;
+  --accent-lavender: #7c6ea6;
+  --border-soft: #d8dde7;
+}
+
+html[data-ui-variant='forest-dawn'] {
+  --app-bg: #f3f5ef;
+  --surface-0: #fdfdf9;
+  --surface-1: #f0f2ea;
+  --text-primary: #2f3a2f;
+  --text-muted: #626b61;
+  --accent-strong: #3c6648;
+  --accent-soft: #e6deef;
+  --accent-lavender: #8f78a8;
+  --border-soft: #dde3d7;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  background: radial-gradient(circle at 5% 0%, color-mix(in srgb, var(--accent-soft) 45%, transparent), transparent 35%),
+    radial-gradient(circle at 92% 12%, color-mix(in srgb, var(--accent-lavender) 22%, transparent), transparent 32%),
+    var(--app-bg);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), 'Avenir Next', 'Segoe UI', sans-serif;
+}
+
+button,
+a {
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent-lavender) 38%, white);
+  color: var(--text-primary);
 }

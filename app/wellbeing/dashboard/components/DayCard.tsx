@@ -10,24 +10,48 @@ interface DayCardProps {
   onToggleDay: () => void;
   onEditItem: (itemId: string, updates: any) => void;
   onDeleteItem: (itemId: string) => void;
+  onDeleteMeal: (dayDate: Date, mealType: string) => void;
+  onMoveItemToMeal: (itemId: string, targetMealType: string) => void;
   onManualAdd: (dateKey: string) => void;
   expandedMeals: Set<string>;
   onToggleMeal: (mealType: string) => void;
+  onSearchFoods: (query: string) => Promise<any[]>;
+  onAddFoodToMeal: (dayDate: Date, mealType: string, food: any) => void;
+  quickAddFoods: any[];
+  // Incomplete-day flagging — days below 500 cal are excluded from averages
+  isIncomplete?:     boolean;
+  isOverridden?:     boolean;   // user clicked "Count anyway" to include this day
+  onToggleOverride?: () => void;
+  emptyMealTypes?: string[];
 }
 
-export default function DayCard({ 
-  day, 
+export default function DayCard({
+  day,
   dayKey,
-  isExpanded, 
+  isExpanded,
   onToggleDay,
   onEditItem,
   onDeleteItem,
+  onDeleteMeal,
+  onMoveItemToMeal,
   onManualAdd,
   expandedMeals,
-  onToggleMeal
+  onToggleMeal,
+  onSearchFoods,
+  onAddFoodToMeal,
+  quickAddFoods,
+  isIncomplete,
+  isOverridden,
+  onToggleOverride,
+  emptyMealTypes = [],
 }: DayCardProps) {
   
   const [isBioExpanded, setIsBioExpanded] = useState(false);
+  const mealOrder: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+  const mealsByType = new Map<string, any>((day.meals || []).map((meal: any) => [meal.meal_type, meal]));
+  const visibleMealTypes = Array.from(
+    new Set<string>([...(day.meals || []).map((meal: any) => meal.meal_type), ...emptyMealTypes])
+  ).sort((a, b) => (mealOrder[a] ?? 999) - (mealOrder[b] ?? 999));
 
   const formatDate = (date: Date) => {
     const today = new Date();
@@ -51,9 +75,14 @@ export default function DayCard({
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <button
+      {/* Converted from <button> to <div> to allow nested interactive elements
+          (incomplete override button) without violating the button-in-button HTML rule */}
+      <div
         onClick={onToggleDay}
-        className="w-full px-5 py-4 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && onToggleDay()}
+        className="w-full px-5 py-4 text-left hover:bg-gray-50 transition-colors flex items-center justify-between cursor-pointer"
       >
         <div className="flex-1">
           <div className="flex items-center gap-2">
@@ -67,12 +96,38 @@ export default function DayCard({
             )}
           </div>
           <div className="text-sm text-gray-500 mt-1">
-            {new Date(day.date).toLocaleDateString('en-US', { 
-              month: 'short', 
+            {new Date(day.date).toLocaleDateString('en-US', {
+              month: 'short',
               day: 'numeric',
               year: 'numeric'
             })}
           </div>
+
+          {/* Incomplete-day badge + override toggle — only shown for low-calorie days.
+              stopPropagation prevents the day expand/collapse from firing when clicked. */}
+          {isIncomplete && (
+            <div
+              className="flex items-center gap-1.5 mt-1.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span
+                className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${
+                  isOverridden
+                    ? 'bg-gray-100 text-gray-500 border-gray-200'   // muted when user is counting it
+                    : 'bg-amber-100 text-amber-700 border-amber-200' // amber warning when excluded
+                }`}
+              >
+                {isOverridden ? '⚠ Low data (counting)' : '⚠ Low data'}
+              </span>
+              <button
+                type="button"
+                onClick={() => onToggleOverride?.()}
+                className="text-[10px] text-blue-600 hover:underline"
+              >
+                {isOverridden ? 'Remove override' : 'Count anyway'}
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-4">
           {/* Biodiversity Score */}
@@ -103,7 +158,7 @@ export default function DayCard({
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="border-t border-gray-200 bg-gray-50 p-4">
@@ -246,16 +301,32 @@ export default function DayCard({
 
           {/* Meals */}
           <div className="space-y-2">
-            {day.meals.map((meal: any) => (
+            {visibleMealTypes.map((mealType) => {
+              const meal = mealsByType.get(mealType) || {
+                meal_type: mealType,
+                items: [],
+                totals: { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 },
+                earliest_time: day.date.toISOString(),
+              };
+
+              return (
               <MealCard
-                key={meal.meal_type}
+                key={mealType}
                 meal={meal}
-                isExpanded={expandedMeals.has(meal.meal_type)}
-                onToggle={() => onToggleMeal(meal.meal_type)}
+                mealType={mealType}
+                dayDate={day.date}
+                isExpanded={expandedMeals.has(mealType)}
+                onToggle={() => onToggleMeal(mealType)}
                 onEditItem={onEditItem}
                 onDeleteItem={onDeleteItem}
+                onDeleteMeal={onDeleteMeal}
+                onMoveItemToMeal={onMoveItemToMeal}
+                onSearchFoods={onSearchFoods}
+                onAddFood={(food) => onAddFoodToMeal(day.date, mealType, food)}
+                quickAddFoods={quickAddFoods}
               />
-            ))}
+            );
+            })}
           </div>
         </div>
       )}

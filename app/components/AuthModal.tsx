@@ -9,9 +9,16 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const hasSupabaseConfig =
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasSupabaseConfig) {
+      setError('Missing Supabase config. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -40,15 +47,15 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/35 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[var(--surface-0)] border border-[var(--border-soft)] rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
+          <h2 className="text-xl sm:text-2xl font-semibold text-[var(--text-primary)]">
             {isSignUp ? 'Create Account' : 'Sign In'}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -58,7 +65,7 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               Email
             </label>
             <input
@@ -66,13 +73,13 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+              className="w-full px-4 py-2.5 sm:py-3 border border-[var(--border-soft)] bg-[var(--surface-1)] rounded-lg focus:ring-2 focus:ring-[var(--accent-lavender)] focus:border-transparent text-base"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               Password
             </label>
             <input
@@ -81,10 +88,10 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-base"
+              className="w-full px-4 py-2.5 sm:py-3 border border-[var(--border-soft)] bg-[var(--surface-1)] rounded-lg focus:ring-2 focus:ring-[var(--accent-lavender)] focus:border-transparent text-base"
               placeholder="••••••••"
             />
-            <p className="mt-1 text-xs text-gray-500">Minimum 6 characters</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">Minimum 6 characters</p>
           </div>
 
           {error && (
@@ -96,7 +103,7 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white font-medium py-3 sm:py-3.5 rounded-lg transition-colors text-base"
+            className="w-full bg-[var(--accent-strong)] hover:brightness-95 disabled:opacity-35 text-white font-medium py-3 sm:py-3.5 rounded-lg transition-colors text-base"
           >
             {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
           </button>
@@ -108,7 +115,7 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
               setIsSignUp(!isSignUp);
               setError('');
             }}
-            className="text-sm text-gray-600 hover:text-gray-900"
+            className="text-sm text-[var(--accent-lavender)] hover:text-[var(--text-primary)]"
           >
             {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
           </button>

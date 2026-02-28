@@ -1,26 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import AppProviders from "./components/AppProviders";
 
 export const metadata: Metadata = {
-  title: "HomeBase",
+  title: "Home Base",
   description: "Structure your wellbeing, growth, and connections",
   manifest: "/manifest.json",
   themeColor: "#111827",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "HomeBase",
+    title: "Home Base",
   },
   viewport: {
     width: "device-width",
@@ -42,14 +32,12 @@ export default function RootLayout({
         <meta name="theme-color" content="#111827" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="HomeBase" />
+        <meta name="apple-mobile-web-app-title" content="Home Base" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className="antialiased">
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );
