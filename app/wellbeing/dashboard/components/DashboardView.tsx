@@ -206,6 +206,15 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         .lt('logged_at', dayEnd.toISOString());
 
       if (error) throw error;
+      const dateKey = dayStart.toDateString();
+      setEmptyMealsByDate((prev) => {
+        const next = new Map(prev);
+        const current = new Set(next.get(dateKey) || []);
+        current.delete(mealType);
+        if (current.size === 0) next.delete(dateKey);
+        else next.set(dateKey, current);
+        return next;
+      });
       loadDashboardData();
     } catch (error) {
       console.error('Error deleting meal:', error);
@@ -325,6 +334,15 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         });
 
       if (error) throw error;
+      const dateKey = new Date(dayDate).toDateString();
+      setEmptyMealsByDate((prev) => {
+        const next = new Map(prev);
+        const current = new Set(next.get(dateKey) || []);
+        current.delete(mealType);
+        if (current.size === 0) next.delete(dateKey);
+        else next.set(dateKey, current);
+        return next;
+      });
       loadDashboardData();
     } catch (error) {
       console.error('Error adding food to meal:', error);
@@ -556,6 +574,14 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         .insert(itemsToInsert);
 
       if (error) throw error;
+      setEmptyMealsByDate((prev) => {
+        const next = new Map(prev);
+        const current = new Set(next.get(manualAddDate) || []);
+        current.delete(savedMeal.meal_type);
+        if (current.size === 0) next.delete(manualAddDate);
+        else next.set(manualAddDate, current);
+        return next;
+      });
 
       alert(`✅ Added "${savedMeal.meal_name}"!`);
       setShowManualAddModal(false);
@@ -616,6 +642,14 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         .insert(rows);
 
       if (error) throw error;
+      setEmptyMealsByDate((prev) => {
+        const next = new Map(prev);
+        const current = new Set(next.get(manualAddDate) || []);
+        current.delete(customMeal.meal_type);
+        if (current.size === 0) next.delete(manualAddDate);
+        else next.set(manualAddDate, current);
+        return next;
+      });
 
       alert(`✅ Added ${rows.length} ${rows.length === 1 ? 'item' : 'items'}!`);
       setShowManualAddModal(false);
