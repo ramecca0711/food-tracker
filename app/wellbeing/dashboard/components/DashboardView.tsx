@@ -6,6 +6,12 @@ import SummaryCards from './SummaryCards';
 import DayCard from './DayCard';
 import ManualAddModal from './ManualAddModal';
 
+type MonthlyHistoryGroup = {
+  monthKey: string;
+  label: string;
+  days: any[];
+};
+
 export default function DashboardView({ userId }: { userId: string | null }) {
   // ============================================================================
   // STATE MANAGEMENT
@@ -686,20 +692,18 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     );
   }
 
-  const monthlyHistoryGroups = Array.from(
-    dailyData.reduce((groups, day) => {
-      const monthKey = `${day.date.getFullYear()}-${day.date.getMonth()}`;
-      const label = day.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      const existing = groups.get(monthKey);
-      if (existing) {
-        existing.days.push(day);
-      } else {
-        groups.set(monthKey, { monthKey, label, days: [day] });
-      }
-      return groups;
-    }, new Map<string, { monthKey: string; label: string; days: any[] }>())
-      .values()
-  );
+  const monthlyGroupMap = dailyData.reduce<Map<string, MonthlyHistoryGroup>>((groups, day) => {
+    const monthKey = `${day.date.getFullYear()}-${day.date.getMonth()}`;
+    const label = day.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const existing = groups.get(monthKey);
+    if (existing) {
+      existing.days.push(day);
+    } else {
+      groups.set(monthKey, { monthKey, label, days: [day] });
+    }
+    return groups;
+  }, new Map<string, MonthlyHistoryGroup>());
+  const monthlyHistoryGroups = Array.from(monthlyGroupMap.values());
 
   // ============================================================================
   // RENDER
