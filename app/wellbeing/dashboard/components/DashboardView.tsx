@@ -260,6 +260,78 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     };
   };
 
+  const buildDailyData = (items: any[], incompleteCalThreshold: number) => {
+    const dateGroups = new Map();
+
+    items.forEach(item => {
+      const itemDate = new Date(item.logged_at);
+      const dateKey = itemDate.toDateString();
+
+      if (!dateGroups.has(dateKey)) {
+        dateGroups.set(dateKey, {
+          date: itemDate,
+          dateKey,
+          items: [],
+          totals: { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 },
+          mealsByType: new Map(),
+        });
+      }
+
+      const dayData = dateGroups.get(dateKey);
+      dayData.items.push(item);
+
+      dayData.totals.calories += item.calories || 0;
+      dayData.totals.protein += item.protein || 0;
+      dayData.totals.fat += item.fat || 0;
+      dayData.totals.carbs += item.carbs || 0;
+      dayData.totals.fiber += item.fiber || 0;
+      dayData.totals.sugar += item.sugar || 0;
+      dayData.totals.sodium += item.sodium || 0;
+
+      const mealType = item.meal_type || 'snack';
+      if (!dayData.mealsByType.has(mealType)) {
+        dayData.mealsByType.set(mealType, {
+          meal_type: mealType,
+          items: [],
+          totals: { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 },
+          earliest_time: item.logged_at,
+        });
+      }
+
+      const meal = dayData.mealsByType.get(mealType);
+      meal.items.push(item);
+      meal.totals.calories += item.calories || 0;
+      meal.totals.protein += item.protein || 0;
+      meal.totals.fat += item.fat || 0;
+      meal.totals.carbs += item.carbs || 0;
+      meal.totals.fiber += item.fiber || 0;
+      meal.totals.sugar += item.sugar || 0;
+      meal.totals.sodium += item.sodium || 0;
+
+      if (new Date(item.logged_at) < new Date(meal.earliest_time)) {
+        meal.earliest_time = item.logged_at;
+      }
+    });
+
+    return Array.from(dateGroups.values())
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .map(day => {
+        const mealOrder = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
+        const meals = Array.from(day.mealsByType.values()).sort((a: any, b: any) => {
+          const orderA = mealOrder[a.meal_type as keyof typeof mealOrder] ?? 999;
+          const orderB = mealOrder[b.meal_type as keyof typeof mealOrder] ?? 999;
+          return orderA - orderB;
+        });
+
+        return {
+          ...day,
+          meals,
+          biodiversity: calculateBiodiversity(day.items),
+          isIncomplete: day.totals.calories < incompleteCalThreshold,
+        };
+      });
+  };
+
   // ============================================================================
   // MANUAL ADD FUNCTIONS
   // ============================================================================
@@ -444,109 +516,44 @@ export default function DashboardView({ userId }: { userId: string | null }) {
 
       if (thirtyError) throw thirtyError;
 
+      // Fetch full history for Food History view (grouped by month in UI).
+      const { data: historyData, error: historyError } = await supabase
+        .from('food_items')
+        .select('*')
+        .eq('user_id', userId)
+        .order('logged_at', { ascending: false });
+
+      if (historyError) throw historyError;
+
+      const allHistoryDays = buildDailyData(historyData ?? [], INCOMPLETE_CAL_THRESHOLD);
+      setDailyData(allHistoryDays);
+
+      // Set today's stats from the most recent day if it is today.
+      if (allHistoryDays.length > 0) {
+        const firstDay = allHistoryDays[0];
+        const isToday = firstDay.dateKey === new Date().toDateString();
+
+        if (isToday) {
+          setTodayStats({
+            calories: firstDay.totals.calories,
+            protein: firstDay.totals.protein,
+            fat: firstDay.totals.fat,
+            carbs: firstDay.totals.carbs,
+            fiber: firstDay.totals.fiber,
+            sugar: firstDay.totals.sugar,
+            sodium: firstDay.totals.sodium,
+            meals: firstDay.meals.length,
+          });
+          setTodayBiodiversity(firstDay.biodiversity);
+        } else {
+          setTodayStats({ calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0, meals: 0 });
+          setTodayBiodiversity(null);
+        }
+      }
+
       // Process 7-day data
       if (sevenDayData) {
-        const dateGroups = new Map();
-        
-        // Group by date
-        sevenDayData.forEach(item => {
-          const itemDate = new Date(item.logged_at);
-          const dateKey = itemDate.toDateString();
-          
-          if (!dateGroups.has(dateKey)) {
-            dateGroups.set(dateKey, {
-              date: itemDate,
-              dateKey,
-              items: [],
-              totals: { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 },
-              mealsByType: new Map()
-            });
-          }
-          
-          const dayData = dateGroups.get(dateKey);
-          dayData.items.push(item);
-          
-          // Add to totals
-          dayData.totals.calories += item.calories || 0;
-          dayData.totals.protein += item.protein || 0;
-          dayData.totals.fat += item.fat || 0;
-          dayData.totals.carbs += item.carbs || 0;
-          dayData.totals.fiber += item.fiber || 0;
-          dayData.totals.sugar += item.sugar || 0;
-          dayData.totals.sodium += item.sodium || 0;
-
-          // Group by meal type
-          const mealType = item.meal_type || 'snack';
-          if (!dayData.mealsByType.has(mealType)) {
-            dayData.mealsByType.set(mealType, {
-              meal_type: mealType,
-              items: [],
-              totals: { calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0 },
-              earliest_time: item.logged_at
-            });
-          }
-          
-          const meal = dayData.mealsByType.get(mealType);
-          meal.items.push(item);
-          meal.totals.calories += item.calories || 0;
-          meal.totals.protein += item.protein || 0;
-          meal.totals.fat += item.fat || 0;
-          meal.totals.carbs += item.carbs || 0;
-          meal.totals.fiber += item.fiber || 0;
-          meal.totals.sugar += item.sugar || 0;
-          meal.totals.sodium += item.sodium || 0;
-          
-          if (new Date(item.logged_at) < new Date(meal.earliest_time)) {
-            meal.earliest_time = item.logged_at;
-          }
-        });
-
-        // Sort and structure days
-        const sortedDays = Array.from(dateGroups.values())
-          .sort((a, b) => b.date.getTime() - a.date.getTime())
-          .map(day => {
-            const mealOrder = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 };
-            const meals = Array.from(day.mealsByType.values())
-              .sort((a: any, b: any) => {
-                const orderA = mealOrder[a.meal_type as keyof typeof mealOrder] ?? 999;
-                const orderB = mealOrder[b.meal_type as keyof typeof mealOrder] ?? 999;
-                return orderA - orderB;
-              });
-            
-            return {
-              ...day,
-              meals,
-              biodiversity: calculateBiodiversity(day.items),
-              // Flag days whose calorie total is below the threshold — used to
-              // show the "⚠ Low data" badge and "Count anyway" button on DayCard.
-              isIncomplete: day.totals.calories < INCOMPLETE_CAL_THRESHOLD,
-            };
-          });
-
-        setDailyData(sortedDays);
-
-        // Set today's stats
-        if (sortedDays.length > 0) {
-          const firstDay = sortedDays[0];
-          const isToday = firstDay.dateKey === new Date().toDateString();
-          
-          if (isToday) {
-            setTodayStats({
-              calories: firstDay.totals.calories,
-              protein: firstDay.totals.protein,
-              fat: firstDay.totals.fat,
-              carbs: firstDay.totals.carbs,
-              fiber: firstDay.totals.fiber,
-              sugar: firstDay.totals.sugar,
-              sodium: firstDay.totals.sodium,
-              meals: firstDay.meals.length
-            });
-            setTodayBiodiversity(firstDay.biodiversity);
-          } else {
-            setTodayStats({ calories: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, sugar: 0, sodium: 0, meals: 0 });
-            setTodayBiodiversity(null);
-          }
-        }
+        const sortedDays = buildDailyData(sevenDayData, INCOMPLETE_CAL_THRESHOLD);
 
         // Calculate 7-day averages — only over days that meet the completeness
         // threshold OR that the user has explicitly overridden to "count anyway".
@@ -679,6 +686,21 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     );
   }
 
+  const monthlyHistoryGroups = Array.from(
+    dailyData.reduce((groups, day) => {
+      const monthKey = `${day.date.getFullYear()}-${day.date.getMonth()}`;
+      const label = day.date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const existing = groups.get(monthKey);
+      if (existing) {
+        existing.days.push(day);
+      } else {
+        groups.set(monthKey, { monthKey, label, days: [day] });
+      }
+      return groups;
+    }, new Map<string, { monthKey: string; label: string; days: any[] }>())
+      .values()
+  );
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -713,32 +735,42 @@ export default function DashboardView({ userId }: { userId: string | null }) {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            {dailyData.map((day, dayIndex) => {
-              const dayKey = dayIndex === 0 ? 'today' : day.dateKey;
-              const isExpanded = expandedDays.has(dayKey);
-              const dayExpandedMeals = expandedMeals.get(dayKey) || new Set();
+          <div className="space-y-6">
+            {monthlyHistoryGroups.map(group => (
+              <section key={group.monthKey} className="space-y-3">
+                <div className="sticky top-2 z-10">
+                  <div className="inline-flex items-center rounded-full border border-gray-200 bg-white/90 px-3 py-1 text-xs font-semibold text-gray-700 backdrop-blur">
+                    {group.label}
+                  </div>
+                </div>
 
-              return (
-                <DayCard
-                  key={day.dateKey}
-                  day={day}
-                  dayKey={dayKey}
-                  isExpanded={isExpanded}
-                  onToggleDay={() => toggleDay(dayKey)}
-                  onEditItem={handleEditItem}
-                  onDeleteItem={handleDeleteItem}
-                  onManualAdd={openManualAddModal}
-                  expandedMeals={dayExpandedMeals}
-                  onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}
-                  isIncomplete={day.isIncomplete}
-                  isOverridden={incompleteOverrides.has(day.dateKey)}
-                  onToggleOverride={() =>
-                    toggleIncompleteOverride(day.dateKey, incompleteOverrides.has(day.dateKey))
-                  }
-                />
-              );
-            })}
+                {group.days.map(day => {
+                  const dayKey = day.dateKey;
+                  const isExpanded = expandedDays.has(dayKey);
+                  const dayExpandedMeals = expandedMeals.get(dayKey) || new Set();
+
+                  return (
+                    <DayCard
+                      key={day.dateKey}
+                      day={day}
+                      dayKey={dayKey}
+                      isExpanded={isExpanded}
+                      onToggleDay={() => toggleDay(dayKey)}
+                      onEditItem={handleEditItem}
+                      onDeleteItem={handleDeleteItem}
+                      onManualAdd={openManualAddModal}
+                      expandedMeals={dayExpandedMeals}
+                      onToggleMeal={(mealType) => toggleMeal(dayKey, mealType)}
+                      isIncomplete={day.isIncomplete}
+                      isOverridden={incompleteOverrides.has(day.dateKey)}
+                      onToggleOverride={() =>
+                        toggleIncompleteOverride(day.dateKey, incompleteOverrides.has(day.dateKey))
+                      }
+                    />
+                  );
+                })}
+              </section>
+            ))}
           </div>
         )}
       </div>

@@ -1,52 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
 import Sidebar from '@/app/components/Sidebar';
+import { useRequireAuth } from '@/app/components/useRequireAuth';
 import { DashboardView } from './components';
 
 export default function WellBeingDashboard() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
-
-  useEffect(() => {
-    checkUser();
-  }, []);
-
-  const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (session?.user) {
-      setUserId(session.user.id);
-      setUserEmail(session.user.email || null);
-    } else {
-      router.push('/');
-    }
-    setIsLoading(false);
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/');
-  };
+  const { userId, userEmail, isLoading, isAuthenticated, signOut } = useRequireAuth();
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-gray-400">Loading...</div>
+      <div className="flex items-center justify-center h-screen bg-[var(--app-bg)]">
+        <div className="text-[var(--text-muted)]">Loading...</div>
       </div>
     );
   }
 
-  if (!userId) return null;
+  if (!isAuthenticated || !userId) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar userEmail={userEmail} onSignOut={handleSignOut} />
-      
+    <div className="min-h-screen bg-transparent flex">
+      <Sidebar userEmail={userEmail} onSignOut={signOut} />
+
       <main className="flex-1">
         <div className="p-4 sm:p-8 pt-20 lg:pt-8">
           <DashboardView userId={userId} />
