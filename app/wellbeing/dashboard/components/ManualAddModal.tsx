@@ -116,8 +116,6 @@ export default function ManualAddModal({
     [mealFoods]
   );
 
-  if (!isOpen) return null;
-
   const addDraftFood = () => {
     if (!draftFoodName.trim() || !draftQuantity.trim() || !draftCalories.trim()) {
       alert('Please fill in at least food name, quantity, and calories');
@@ -201,6 +199,8 @@ export default function ManualAddModal({
 
     return () => clearTimeout(timer);
   }, [mode, onSearchFoods, searchText]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
