@@ -1,21 +1,20 @@
-import FeaturePage from '@/app/components/FeaturePage';
+import PageLayout from '@/app/components/PageLayout';
 
 export default function ReportsIntegrationsPage() {
+  // Integration list starts with Apple Health/Oura status tracking.
   return (
-    <FeaturePage
-      section="Reports"
-      title="Integrations"
-      description="Manage connected tools and data flows so your dashboards stay reliable and up to date."
-      focusItems={[
-        'Connected services and sync status',
-        'Data source ownership and permissions',
-        'Known sync gaps and troubleshooting notes',
-      ]}
-      nextActions={[
-        'List current integrations and owners.',
-        'Check latest sync timestamp for each source.',
-        'Flag one reliability improvement to implement.',
-      ]}
-    />
+    <PageLayout>
+      <div className="space-y-6">
+        <header className="rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Reports</p>
+          <h1 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">Integrations</h1>
+        </header>
+
+        <section className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Apple Health (includes Oura)</h2>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">Status: Pending</p>
+        </section>
+      </div>
+    </PageLayout>
   );
 }
