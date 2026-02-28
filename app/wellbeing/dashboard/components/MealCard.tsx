@@ -30,6 +30,15 @@ export default function MealCard({ meal, isExpanded, onToggle, onEditItem, onDel
     });
   };
 
+  const getItemSummary = (items: any[]) => {
+    const names = (items || [])
+      .map((item) => String(item.food_name || '').trim())
+      .filter(Boolean);
+
+    if (names.length === 0) return 'No items';
+    return names.join(', ');
+  };
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <button
@@ -41,7 +50,7 @@ export default function MealCard({ meal, isExpanded, onToggle, onEditItem, onDel
             {formatMealType(meal.meal_type)}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
-            {formatTime(meal.earliest_time)} · {meal.items.length} items
+            {formatTime(meal.earliest_time)} · {getItemSummary(meal.items)}
           </div>
         </div>
         <div className="flex items-center gap-3">
