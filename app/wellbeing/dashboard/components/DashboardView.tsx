@@ -189,18 +189,26 @@ export default function DashboardView({ userId }: { userId: string | null }) {
   const searchFoods = async (query: string): Promise<FoodSearchResult[]> => {
     if (!userId || !query.trim()) return [];
 
-    const { data, error } = await supabase
+    const trimmedQuery = query.trim();
+    const { data: personalData, error: personalError } = await supabase
       .from('food_items')
       .select('food_name, quantity, calories, protein, fat, carbs, fiber, sugar, sodium, categories, whole_food_ingredients, source, logged_at')
       .eq('user_id', userId)
-      .ilike('food_name', `%${query.trim()}%`)
+      .ilike('food_name', `%${trimmedQuery}%`)
       .order('logged_at', { ascending: false })
       .limit(250);
 
-    if (error || !data) return [];
+    const { data: globalData } = await supabase
+      .from('master_food_database')
+      .select('food_name, serving_size_label, calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, fiber_per_100g, sugar_per_100g, sodium_mg_per_100g, times_used')
+      .or(`food_name.ilike.%${trimmedQuery}%,normalized_name.ilike.%${trimmedQuery}%`)
+      .order('times_used', { ascending: false })
+      .limit(100);
+
+    if (personalError && !globalData) return [];
 
     const deduped = new Map<string, FoodSearchResult>();
-    for (const row of data as any[]) {
+    for (const row of (personalData || []) as any[]) {
       const key = String(row.food_name || '').trim().toLowerCase();
       if (!key || deduped.has(key)) continue;
       deduped.set(key, {
@@ -218,6 +226,26 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         source: row.source || 'cache',
       });
     }
+
+    for (const row of (globalData || []) as any[]) {
+      const key = String(row.food_name || '').trim().toLowerCase();
+      if (!key || deduped.has(key)) continue;
+      deduped.set(key, {
+        food_name: row.food_name,
+        quantity: row.serving_size_label || '100g',
+        calories: Number(row.calories_per_100g) || 0,
+        protein: Number(row.protein_per_100g) || 0,
+        fat: Number(row.fat_per_100g) || 0,
+        carbs: Number(row.carbs_per_100g) || 0,
+        fiber: Number(row.fiber_per_100g) || 0,
+        sugar: Number(row.sugar_per_100g) || 0,
+        sodium: Number(row.sodium_mg_per_100g) || 0,
+        categories: [],
+        whole_food_ingredients: [],
+        source: 'cache',
+      });
+    }
+
     return Array.from(deduped.values()).slice(0, 10);
   };
 
