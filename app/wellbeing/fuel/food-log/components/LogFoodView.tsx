@@ -232,26 +232,31 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setEditingMeals(updated);
   };
 
-  const handleItemEdit = (mealIndex: number, itemIndex: number, field: string, value: any) => {
-    const updated = [...editingMeals];
-    const currentItem = normalizeItemForEditing(updated[mealIndex].items[itemIndex]);
+  const applyScaledItemEdit = (itemRaw: any, field: string, value: any) => {
+    const currentItem = normalizeItemForEditing(itemRaw);
 
     if (field === 'amount') {
       const amount = toSafeAmount(value);
-      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({ ...currentItem, amount });
-    } else if (field === 'serving_size') {
-      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({
+      return normalizeItemForEditing({ ...currentItem, amount });
+    }
+
+    if (field === 'serving_size') {
+      return normalizeItemForEditing({
         ...currentItem,
         serving_size: String(value || ''),
       });
-    } else if (field === 'quantity') {
+    }
+
+    if (field === 'quantity') {
       const parsed = parseQuantityComposite(value);
-      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({
+      return normalizeItemForEditing({
         ...currentItem,
         amount: parsed.amount,
         serving_size: parsed.servingSize,
       });
-    } else if (
+    }
+
+    if (
       field === 'calories' ||
       field === 'protein' ||
       field === 'fat' ||
@@ -262,17 +267,26 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     ) {
       const numericValue = Number(value) || 0;
       const amount = toSafeAmount(currentItem.amount);
-      updated[mealIndex].items[itemIndex] = normalizeItemForEditing({
+      return normalizeItemForEditing({
         ...currentItem,
         [field]: numericValue,
         [`base_${field}`]: numericValue / amount,
       });
-    } else {
-      updated[mealIndex].items[itemIndex] = {
-        ...currentItem,
-        [field]: value,
-      };
     }
+
+    return {
+      ...currentItem,
+      [field]: value,
+    };
+  };
+
+  const handleItemEdit = (mealIndex: number, itemIndex: number, field: string, value: any) => {
+    const updated = [...editingMeals];
+    updated[mealIndex].items[itemIndex] = applyScaledItemEdit(
+      updated[mealIndex].items[itemIndex],
+      field,
+      value
+    );
     setEditingMeals(updated);
   };
 
@@ -593,7 +607,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
     setEditingSavedMealData({
       meal_name: meal.meal_name,
       meal_type: meal.meal_type,
-      items:     JSON.parse(JSON.stringify(meal.items)),
+      items:     JSON.parse(JSON.stringify(meal.items)).map((item: any) => normalizeItemForEditing(item)),
       notes:     meal.notes || '',
     });
   };
@@ -607,7 +621,10 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         .update({
           meal_name: editingSavedMealData.meal_name,
           meal_type: editingSavedMealData.meal_type,
-          items:     editingSavedMealData.items,
+          items:     editingSavedMealData.items.map((item: any) => ({
+            ...normalizeItemForEditing(item),
+            quantity: formatQuantity(item.serving_size || item.quantity, item.amount || 1),
+          })),
           notes:     editingSavedMealData.notes,
         })
         .eq('id', mealId)
@@ -632,7 +649,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   const updateEditingSavedMealItem = (itemIndex: number, field: string, value: any) => {
     if (!editingSavedMealData) return;
     const updated = { ...editingSavedMealData };
-    updated.items[itemIndex] = { ...updated.items[itemIndex], [field]: value };
+    updated.items[itemIndex] = applyScaledItemEdit(updated.items[itemIndex], field, value);
     setEditingSavedMealData(updated);
   };
 
@@ -1235,7 +1252,7 @@ Examples:
                             <div className="space-y-3">
                               {editingSavedMealData.items.map((item: any, idx: number) => (
                                 <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                  <div className="grid grid-cols-2 gap-2 mb-3">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                                     <div>
                                       <label className="block text-xs font-medium text-gray-600 mb-1">Food Name</label>
                                       <input
@@ -1246,11 +1263,22 @@ Examples:
                                       />
                                     </div>
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Serving size</label>
                                       <input
                                         type="text"
-                                        value={item.quantity}
-                                        onChange={(e) => updateEditingSavedMealItem(idx, 'quantity', e.target.value)}
+                                        value={item.serving_size || item.quantity}
+                                        onChange={(e) => updateEditingSavedMealItem(idx, 'serving_size', e.target.value)}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0.1"
+                                        value={item.amount ?? 1}
+                                        onChange={(e) => updateEditingSavedMealItem(idx, 'amount', e.target.value)}
                                         className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                                       />
                                     </div>
