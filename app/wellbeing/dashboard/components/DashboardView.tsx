@@ -547,12 +547,17 @@ export default function DashboardView({ userId }: { userId: string | null }) {
 
     try {
       const mealGroupId = crypto.randomUUID();
-      const selectedDateTime = new Date(manualAddDate + 'T12:00:00');
+      const selectedDateTime = new Date(manualAddDate);
+      selectedDateTime.setHours(12, 0, 0, 0);
+      if (Number.isNaN(selectedDateTime.getTime())) {
+        throw new Error(`Invalid manual add date: ${manualAddDate}`);
+      }
+      const mealItems = Array.isArray(savedMeal.items) ? savedMeal.items : [];
       
-      const itemsToInsert = savedMeal.items.map((item: any) => ({
+      const itemsToInsert = mealItems.map((item: any) => ({
         user_id: userId,
         food_name: item.food_name,
-        quantity: item.quantity,
+        quantity: item.quantity || '1 serving',
         calories: parseInt(item.calories) || 0,
         protein: parseFloat(item.protein) || 0,
         fat: parseFloat(item.fat) || 0,
@@ -568,6 +573,10 @@ export default function DashboardView({ userId }: { userId: string | null }) {
         eating_out: false,
         logged_at: selectedDateTime.toISOString(),
       }));
+
+      if (itemsToInsert.length === 0) {
+        throw new Error('Saved meal has no items to insert');
+      }
 
       const { error } = await supabase
         .from('food_items')
@@ -597,7 +606,11 @@ export default function DashboardView({ userId }: { userId: string | null }) {
 
     try {
       const mealGroupId = crypto.randomUUID();
-      const selectedDateTime = new Date(manualAddDate + 'T12:00:00');
+      const selectedDateTime = new Date(manualAddDate);
+      selectedDateTime.setHours(12, 0, 0, 0);
+      if (Number.isNaN(selectedDateTime.getTime())) {
+        throw new Error(`Invalid manual add date: ${manualAddDate}`);
+      }
 
       const items = Array.isArray(customMeal.items) && customMeal.items.length > 0
         ? customMeal.items
