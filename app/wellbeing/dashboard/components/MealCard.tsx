@@ -72,7 +72,7 @@ export default function MealCard({ meal, isExpanded, onToggle, onEditItem, onDel
         <div className="px-3 pb-3 space-y-1.5 border-t border-gray-100">
           {meal.items.map((item: any, idx: number) => (
             <FoodItemCard
-              key={idx}
+              key={item.id || `${meal.meal_type}-${idx}-${item.food_name || 'item'}`}
               item={item}
               onEdit={onEditItem}
               onDelete={onDeleteItem}

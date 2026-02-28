@@ -672,11 +672,9 @@ export default function DashboardView({ userId }: { userId: string | null }) {
     };
     
     window.addEventListener('foodLogged', handleFoodLogged);
-    const interval = setInterval(loadDashboardData, 30000);
     
     return () => {
       window.removeEventListener('foodLogged', handleFoodLogged);
-      clearInterval(interval);
     };
   }, [userId]);
 
