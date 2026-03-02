@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
 import { useAuth } from '@/app/components/AuthProvider';
+import { getDeviceDateInputValue, parseDeviceDateInput } from '@/lib/deviceDate';
 
 type Angle = 'front' | 'back' | 'left' | 'right';
 
@@ -31,7 +32,7 @@ const emptyPhotos = (): EntryPhotos => ({
 });
 
 const formatDate = (dateString: string) => {
-  const date = new Date(`${dateString}T00:00:00`);
+  const date = parseDeviceDateInput(dateString);
   return date.toLocaleDateString(undefined, {
     weekday: 'short',
     month: 'short',
@@ -41,14 +42,68 @@ const formatDate = (dateString: string) => {
 };
 
 const sortEntriesDesc = (entries: ProgressPhotoEntry[]) =>
-  [...entries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  [...entries].sort(
+    (a, b) => parseDeviceDateInput(b.date).getTime() - parseDeviceDateInput(a.date).getTime()
+  );
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('Unable to read file'));
+    reader.readAsDataURL(file);
+  });
+
+const compressImageToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      const maxDimension = 1600;
+      const largestSide = Math.max(image.width, image.height);
+      const scale = largestSide > maxDimension ? maxDimension / largestSide : 1;
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Unable to process image'));
+        return;
+      }
+
+      context.drawImage(image, 0, 0, width, height);
+      const compressed = canvas.toDataURL('image/jpeg', 0.82);
+      URL.revokeObjectURL(objectUrl);
+      resolve(compressed);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Unsupported image format'));
+    };
+
+    image.src = objectUrl;
+  });
 
 export default function ProgressPhotosPage() {
   const { userId, isReady } = useAuth();
   const [entries, setEntries] = useState<ProgressPhotoEntry[]>([]);
-  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [entryDate, setEntryDate] = useState(() => getDeviceDateInputValue());
   const [notes, setNotes] = useState('');
   const [draftPhotos, setDraftPhotos] = useState<EntryPhotos>(emptyPhotos);
+  const [uploadingAngles, setUploadingAngles] = useState<Record<Angle, boolean>>({
+    front: false,
+    back: false,
+    left: false,
+    right: false,
+  });
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [selectedCompareA, setSelectedCompareA] = useState<string>('');
   const [selectedCompareB, setSelectedCompareB] = useState<string>('');
   const [selectedAngle, setSelectedAngle] = useState<Angle>('front');
@@ -75,7 +130,12 @@ export default function ProgressPhotosPage() {
 
   useEffect(() => {
     if (!isReady || !userId) return;
-    localStorage.setItem(storageKey, JSON.stringify(entries));
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(entries));
+      setStorageError(null);
+    } catch {
+      setStorageError('Storage is full. Try deleting older entries or using smaller image files.');
+    }
   }, [entries, isReady, storageKey, userId]);
 
   const selectedEntryA = useMemo(
@@ -90,14 +150,27 @@ export default function ProgressPhotosPage() {
 
   const onUploadPhoto = async (angle: Angle, file: File | null) => {
     if (!file) return;
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ''));
-      reader.onerror = () => reject(new Error('Unable to read file'));
-      reader.readAsDataURL(file);
-    });
-
-    setDraftPhotos((prev) => ({ ...prev, [angle]: dataUrl }));
+    setUploadError(null);
+    setUploadingAngles((prev) => ({ ...prev, [angle]: true }));
+    try {
+      // Downsize large images to prevent browser hangs and localStorage overflow.
+      const shouldCompress = file.size > 1_250_000 || file.type.startsWith('image/');
+      let dataUrl = '';
+      if (shouldCompress) {
+        try {
+          dataUrl = await compressImageToDataUrl(file);
+        } catch {
+          dataUrl = await readFileAsDataUrl(file);
+        }
+      } else {
+        dataUrl = await readFileAsDataUrl(file);
+      }
+      setDraftPhotos((prev) => ({ ...prev, [angle]: dataUrl }));
+    } catch {
+      setUploadError('Could not load that file. Try a JPG/PNG/WEBP image from Photos or Files.');
+    } finally {
+      setUploadingAngles((prev) => ({ ...prev, [angle]: false }));
+    }
   };
 
   const clearDraftAngle = (angle: Angle) => {
@@ -192,6 +265,12 @@ export default function ProgressPhotosPage() {
 
         <section className="rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-6 space-y-4">
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Add New Entry</h2>
+          {uploadError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{uploadError}</p>
+          ) : null}
+          {storageError ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{storageError}</p>
+          ) : null}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium text-[var(--text-primary)]">Entry Date</span>
@@ -227,10 +306,10 @@ export default function ProgressPhotosPage() {
                   </button>
                 </div>
                 <label className="block cursor-pointer rounded-lg border border-dashed border-[var(--border-soft)] p-3 text-center text-xs text-[var(--text-muted)] hover:border-[var(--accent-lavender)]">
-                  Upload
+                  {uploadingAngles[angle.key] ? 'Uploading...' : 'Choose from Photos or Files'}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp"
                     onChange={(event) => onUploadPhoto(angle.key, event.target.files?.[0] ?? null)}
                     className="hidden"
                   />

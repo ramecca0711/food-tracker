@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getDeviceDateInputValue } from '@/lib/deviceDate';
 import BarcodeScanner from '@/app/components/BarcodeScanner';
 import NutritionLabelCapture from '@/app/components/NutritionLabelCapture';
 import SourceBadge from '@/app/components/SourceBadge';
@@ -38,7 +39,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
   // ============================================================================
 
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    getDeviceDateInputValue()
   );
 
   const [foodInput, setFoodInput] = useState('');
@@ -1084,7 +1085,7 @@ export default function LogFoodView({ userId }: { userId: string | null }) {
         <input
           type="date"
           value={selectedDate}
-          max={new Date().toISOString().split('T')[0]}
+          max={getDeviceDateInputValue()}
           onChange={(e) => setSelectedDate(e.target.value)}
           className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
         />
