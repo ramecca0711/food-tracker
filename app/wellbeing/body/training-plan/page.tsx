@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type Exercise = { id: string; name: string; sets: number; reps: string; weight: string };
 type DayPlan = { id: string; label: string; exercises: Exercise[] };
@@ -49,6 +50,43 @@ export default function TrainingPlanPage() {
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set(['w-current']));
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set(['d-mon']));
   const [selectedDayId, setSelectedDayId] = useState('d-mon');
+  const STORAGE_KEY = 'wellbeing:training-plan:state';
+
+  useEffect(() => {
+    const saved = readLocalJson<{
+      calendarOpen: boolean;
+      listOpen: boolean;
+      weeks: WeekPlan[];
+      expandedWeeks: string[];
+      expandedDays: string[];
+      selectedDayId: string;
+    }>(STORAGE_KEY, {
+      calendarOpen: true,
+      listOpen: true,
+      weeks: [currentWeek, previousWeek],
+      expandedWeeks: ['w-current'],
+      expandedDays: ['d-mon'],
+      selectedDayId: 'd-mon',
+    });
+
+    setCalendarOpen(Boolean(saved.calendarOpen));
+    setListOpen(Boolean(saved.listOpen));
+    setWeeks(saved.weeks || [currentWeek, previousWeek]);
+    setExpandedWeeks(new Set(saved.expandedWeeks || []));
+    setExpandedDays(new Set(saved.expandedDays || []));
+    setSelectedDayId(saved.selectedDayId || 'd-mon');
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, {
+      calendarOpen,
+      listOpen,
+      weeks,
+      expandedWeeks: Array.from(expandedWeeks),
+      expandedDays: Array.from(expandedDays),
+      selectedDayId,
+    });
+  }, [calendarOpen, listOpen, weeks, expandedWeeks, expandedDays, selectedDayId]);
 
   const daysFlat = useMemo(() => weeks.flatMap((w) => w.days), [weeks]);
 

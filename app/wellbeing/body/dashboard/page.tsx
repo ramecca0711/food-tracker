@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type BodySnapshot = {
   id: string;
@@ -21,6 +22,15 @@ export default function BodyDashboardPage() {
   // Manual entry stays available while HealthKit integration is pending.
   const [snapshots, setSnapshots] = useState<BodySnapshot[]>(initialSnapshots);
   const [form, setForm] = useState({ weight: '178', bodyFat: '18.6', restingHr: '59' });
+  const STORAGE_KEY = 'wellbeing:body-dashboard:snapshots';
+
+  useEffect(() => {
+    setSnapshots(readLocalJson<BodySnapshot[]>(STORAGE_KEY, initialSnapshots));
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, snapshots);
+  }, [snapshots]);
 
   const mostRecent = useMemo(() => {
     return [...snapshots].sort((a, b) => +new Date(b.loggedAt) - +new Date(a.loggedAt))[0];

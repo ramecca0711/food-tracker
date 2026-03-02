@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type Category = { id: string; label: string; color: string };
 type Goal = { id: string; label: string; categoryId: string };
@@ -38,6 +39,35 @@ export default function GrowthBingoPage() {
   const [customCategoryName, setCustomCategoryName] = useState('');
   const [grid, setGrid] = useState<BingoCell[] | null>(null);
   const [completedGoalIds, setCompletedGoalIds] = useState<Set<string>>(new Set());
+  const STORAGE_KEY = 'growth:bingo:state';
+
+  useEffect(() => {
+    const saved = readLocalJson<{
+      categories: Category[];
+      goals: Goal[];
+      grid: BingoCell[] | null;
+      completedGoalIds: string[];
+    }>(STORAGE_KEY, {
+      categories: defaultCategories,
+      goals: makeInitialGoals(),
+      grid: null,
+      completedGoalIds: [],
+    });
+
+    setCategories(saved.categories || defaultCategories);
+    setGoals(saved.goals || makeInitialGoals());
+    setGrid(saved.grid || null);
+    setCompletedGoalIds(new Set(saved.completedGoalIds || []));
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, {
+      categories,
+      goals,
+      grid,
+      completedGoalIds: Array.from(completedGoalIds),
+    });
+  }, [categories, goals, grid, completedGoalIds]);
 
   const categoryById = useMemo(() => {
     const map = new Map<string, Category>();

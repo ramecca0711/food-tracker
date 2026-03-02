@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
 
 type TradeRequest = {
@@ -47,10 +47,35 @@ export default function ConnectionFoodSharingPage() {
   const [newPost, setNewPost] = useState({ mealName: '', servings: '1', location: '' });
   const [activeRequestPostId, setActiveRequestPostId] = useState<string | null>(null);
   const [requestForm, setRequestForm] = useState({ offeredMeal: '', offeredServings: '1', timesCsv: '' });
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const savedUser = localStorage.getItem('food-sharing:user');
+      const savedPosts = localStorage.getItem('food-sharing:posts');
+      if (savedUser) setCurrentUser(savedUser);
+      if (savedPosts) {
+        const parsed = JSON.parse(savedPosts) as MealPost[];
+        if (Array.isArray(parsed)) setPosts(parsed);
+      }
+    } catch {
+      // ignore malformed local data
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('food-sharing:user', currentUser);
+    localStorage.setItem('food-sharing:posts', JSON.stringify(posts));
+  }, [currentUser, posts]);
 
   const activePost = useMemo(
     () => posts.find((post) => post.id === activeRequestPostId) || null,
     [posts, activeRequestPostId]
+  );
+
+  const editingPost = useMemo(
+    () => posts.find((post) => post.id === editingPostId) || null,
+    [posts, editingPostId]
   );
 
   const addPost = () => {
@@ -111,6 +136,24 @@ export default function ConnectionFoodSharingPage() {
           ),
         };
       })
+    );
+  };
+
+  const deletePost = (postId: string) => {
+    setPosts((prev) => prev.filter((post) => post.id !== postId));
+    if (activeRequestPostId === postId) setActiveRequestPostId(null);
+    if (editingPostId === postId) setEditingPostId(null);
+  };
+
+  const updatePost = (postId: string, updates: Partial<MealPost>) => {
+    setPosts((prev) => prev.map((post) => (post.id === postId ? { ...post, ...updates } : post)));
+  };
+
+  const deleteRequest = (postId: string, requestId: string) => {
+    setPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, requests: post.requests.filter((request) => request.id !== requestId) } : post
+      )
     );
   };
 
@@ -175,21 +218,58 @@ export default function ConnectionFoodSharingPage() {
                     {post.poster} · {post.servingsAvailable} servings · {post.location}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveRequestPostId(post.id)}
-                  className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-xs"
-                >
-                  Request Trade
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPostId(post.id)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
+                    title="Edit post"
+                    aria-label="Edit post"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 11l7.768-7.768a2.5 2.5 0 113.536 3.536L12.536 14.536a2 2 0 01-.878.517L8 16l.947-3.658A2 2 0 019.464 11.464z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deletePost(post.id)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
+                    title="Delete post"
+                    aria-label="Delete post"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12M10 11v6M14 11v6" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRequestPostId(post.id)}
+                    className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-xs"
+                  >
+                    Request Trade
+                  </button>
+                </div>
               </div>
 
               {post.requests.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {post.requests.map((request) => (
                     <div key={request.id} className="rounded-lg border border-[var(--border-soft)] bg-white p-2 text-xs">
-                      <div>
-                        {request.requester} offers {request.offeredMeal} ({request.offeredServings} servings)
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          {request.requester} offers {request.offeredMeal} ({request.offeredServings} servings)
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => deleteRequest(post.id, request.id)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
+                          title="Delete request"
+                          aria-label="Delete request"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12M10 11v6M14 11v6" />
+                          </svg>
+                        </button>
                       </div>
                       <div className="mt-1 text-[var(--text-muted)]">Times: {request.timeOptions.join(' | ')}</div>
                       <div className="mt-1 text-[var(--text-muted)]">Status: {request.status}</div>
@@ -259,6 +339,43 @@ export default function ConnectionFoodSharingPage() {
                 className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
               >
                 Cancel
+              </button>
+            </div>
+          </section>
+        )}
+
+        {editingPost && (
+          <section className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Edit Post</h2>
+            <div className="mt-3 grid gap-2 sm:grid-cols-[2fr_1fr_1fr]">
+              <input
+                value={editingPost.mealName}
+                onChange={(e) => updatePost(editingPost.id, { mealName: e.target.value })}
+                placeholder="Meal name"
+                className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                min="1"
+                value={String(editingPost.servingsAvailable)}
+                onChange={(e) => updatePost(editingPost.id, { servingsAvailable: Number(e.target.value) || 1 })}
+                placeholder="Servings"
+                className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
+              />
+              <input
+                value={editingPost.location}
+                onChange={(e) => updatePost(editingPost.id, { location: e.target.value })}
+                placeholder="Area"
+                className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setEditingPostId(null)}
+                className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
+              >
+                Done
               </button>
             </div>
           </section>

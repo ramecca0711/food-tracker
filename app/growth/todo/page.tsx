@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type SectionKey = 'today' | 'week' | 'later';
 
@@ -30,6 +31,28 @@ export default function GrowthTodoPage() {
   const [categorySelect, setCategorySelect] = useState('Personal');
   const [customCategory, setCustomCategory] = useState('');
   const [dragging, setDragging] = useState<{ section: SectionKey; taskId: string } | null>(null);
+  const STORAGE_KEY = 'growth:todo:state';
+
+  useEffect(() => {
+    const saved = readLocalJson<{
+      sections: Record<SectionKey, Task[]>;
+      history: Task[];
+    }>(STORAGE_KEY, {
+      sections: {
+        today: [],
+        week: [],
+        later: [],
+      },
+      history: [],
+    });
+
+    if (saved.sections) setSections(saved.sections);
+    setHistory(saved.history || []);
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, { sections, history });
+  }, [sections, history]);
 
   const resolveCategory = () => (categorySelect === 'Custom' ? customCategory.trim() || 'Custom' : categorySelect);
 

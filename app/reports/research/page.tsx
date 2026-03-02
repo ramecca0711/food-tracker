@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type ResearchItem = { id: string; title: string; notes: string; url: string };
 
@@ -15,6 +16,17 @@ export default function ReportsResearchPage() {
     },
   ]);
   const [draft, setDraft] = useState({ title: '', notes: '', url: '' });
+  const STORAGE_KEY = 'reports:research:items';
+
+  useEffect(() => {
+    const saved = readLocalJson<ResearchItem[]>(STORAGE_KEY, items);
+    setItems(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, items);
+  }, [items]);
 
   const addItem = () => {
     if (!draft.title.trim() || !draft.url.trim()) return;

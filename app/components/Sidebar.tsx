@@ -22,13 +22,47 @@ interface SidebarProps {
   onSignOut: () => void;
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'sidebar:isCollapsed';
+const SIDEBAR_EXPANDED_SECTIONS_KEY = 'sidebar:expandedSections';
+
 export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
   // Desktop collapse: icon strip (w-16) vs full sidebar (w-64)
   const [isCollapsed, setIsCollapsed] = useState(false);
   // Mobile drawer: slide-over open/closed — starts closed (fully off screen)
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['wellbeing']));
+  // First load defaults to all collapsed; afterwards, restore user preference.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const pathname = usePathname();
+
+  // Restore persisted sidebar preferences on mount.
+  useEffect(() => {
+    try {
+      const rawCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (rawCollapsed !== null) {
+        setIsCollapsed(rawCollapsed === 'true');
+      }
+
+      const rawSections = localStorage.getItem(SIDEBAR_EXPANDED_SECTIONS_KEY);
+      if (rawSections) {
+        const parsed = JSON.parse(rawSections) as string[];
+        if (Array.isArray(parsed)) {
+          setExpandedSections(new Set(parsed));
+        }
+      }
+    } catch {
+      // Ignore invalid stored state and keep defaults.
+    }
+  }, []);
+
+  // Persist desktop collapsed state.
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
+  }, [isCollapsed]);
+
+  // Persist expanded section state.
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_EXPANDED_SECTIONS_KEY, JSON.stringify(Array.from(expandedSections)));
+  }, [expandedSections]);
 
   // Auto-close the mobile drawer when the user navigates to a new route.
   // Without this, tapping a link leaves the drawer open, obscuring the page.
@@ -37,13 +71,15 @@ export default function Sidebar({ userEmail, onSignOut }: SidebarProps) {
   }, [pathname]);
 
   const toggleSection = (section: string) => {
-    const newExpanded = new Set(expandedSections);
-    if (newExpanded.has(section)) {
-      newExpanded.delete(section);
-    } else {
-      newExpanded.add(section);
-    }
-    setExpandedSections(newExpanded);
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
   };
 
   const getLinkClasses = (path: string) => {

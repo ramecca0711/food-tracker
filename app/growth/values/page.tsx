@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type ValueOption = { id: string; name: string; description: string };
 
@@ -22,6 +23,20 @@ export default function GrowthValuesPage() {
   // Top 3 selection behavior mirrors a tap-based board interaction.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const STORAGE_KEY = 'growth:values:state';
+
+  useEffect(() => {
+    const saved = readLocalJson<{ selectedIds: string[]; notes: Record<string, string> }>(STORAGE_KEY, {
+      selectedIds: [],
+      notes: {},
+    });
+    setSelectedIds(saved.selectedIds || []);
+    setNotes(saved.notes || {});
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, { selectedIds, notes });
+  }, [selectedIds, notes]);
 
   const selectedValues = useMemo(
     () => selectedIds.map((id) => valueOptions.find((v) => v.id === id)).filter(Boolean) as ValueOption[],

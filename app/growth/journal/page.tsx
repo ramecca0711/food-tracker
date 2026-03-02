@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type JournalEntry = { id: string; text: string; createdAt: string };
 
@@ -10,6 +11,15 @@ export default function GrowthJournalPage() {
   const [draft, setDraft] = useState('');
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const STORAGE_KEY = 'growth:journal:entries';
+
+  useEffect(() => {
+    setEntries(readLocalJson<JournalEntry[]>(STORAGE_KEY, []));
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, entries);
+  }, [entries]);
 
   const submitEntry = () => {
     if (!draft.trim()) return;

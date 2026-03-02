@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
+import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
 
 type Suggestion = { id: string; text: string; group: string };
 
@@ -23,6 +24,20 @@ export default function GrowthAffirmationsPage() {
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('All');
   const [myAffirmations, setMyAffirmations] = useState<string[]>([]);
+  const STORAGE_KEY = 'growth:affirmations:state';
+
+  useEffect(() => {
+    const saved = readLocalJson<{ chatLog: string[]; myAffirmations: string[] }>(STORAGE_KEY, {
+      chatLog: [],
+      myAffirmations: [],
+    });
+    setChatLog(saved.chatLog || []);
+    setMyAffirmations(saved.myAffirmations || []);
+  }, []);
+
+  useEffect(() => {
+    writeLocalJson(STORAGE_KEY, { chatLog, myAffirmations });
+  }, [chatLog, myAffirmations]);
 
   const groups = useMemo(() => ['All', ...new Set(suggestions.map((s) => s.group))], []);
 
