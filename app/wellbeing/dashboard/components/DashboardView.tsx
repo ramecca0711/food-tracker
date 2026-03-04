@@ -1041,6 +1041,7 @@ export default function DashboardView({ userId }: { userId: string | null }) {
                         toggleIncompleteOverride(day.dateKey, incompleteOverrides.has(day.dateKey))
                       }
                       emptyMealTypes={Array.from(emptyMealsByDate.get(day.dateKey) || [])}
+                      goals={goals}
                     />
                   );
                 })}

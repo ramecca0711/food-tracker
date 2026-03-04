@@ -37,7 +37,14 @@ export default function MealCard({
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
-  
+
+  // Eating-out state — can be toggled directly from the meal tile in the history view.
+  // Propagates to every food item in the meal so the eating_out badge stays in sync.
+  const initialEatingOut = Boolean(
+    meal.eating_out || (meal.items || []).some((item: any) => item.eating_out)
+  );
+  const [eatingOut, setEatingOut] = useState(initialEatingOut);
+
   const formatMealType = (type: string) => {
     const emoji = {
       breakfast: '🌅',
@@ -63,6 +70,19 @@ export default function MealCard({
 
     if (names.length === 0) return 'No items';
     return names.join(', ');
+  };
+
+  // Toggle the eating-out flag for all food items in this meal.
+  const handleToggleEatingOut = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !eatingOut;
+    setEatingOut(next);
+    // Propagate the change to every item in the meal via the existing onEditItem handler.
+    (meal.items || []).forEach((item: any) => {
+      if (item.id) {
+        onEditItem(item.id, { eating_out: next });
+      }
+    });
   };
 
   useEffect(() => {
@@ -127,21 +147,40 @@ export default function MealCard({
         className="w-full p-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
       >
         <div className="flex-1">
-          <div className="font-medium text-gray-900 text-sm">
-            {formatMealType(meal.meal_type)}
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-gray-900 text-sm">{formatMealType(meal.meal_type)}</span>
+            {/* Eating-out badge — shown inline so it's visible even when collapsed */}
+            {eatingOut && (
+              <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[11px] rounded font-medium">
+                🍽️ Restaurant
+              </span>
+            )}
           </div>
           <div className="text-xs text-gray-500 mt-0.5">
             {formatTime(meal.earliest_time)} · {getItemSummary(meal.items)}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Eating-out toggle button */}
+          <button
+            type="button"
+            onClick={handleToggleEatingOut}
+            className={`text-xs px-1.5 py-1 rounded transition-colors ${
+              eatingOut
+                ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                : 'text-gray-400 hover:bg-gray-100 hover:text-orange-600'
+            }`}
+            title={eatingOut ? 'Remove restaurant tag' : 'Mark as eating out / restaurant'}
+          >
+            🍽️
+          </button>
           <div className="text-right">
             <div className="font-semibold text-gray-900 text-sm">
               {meal.totals.calories} cal
             </div>
             <div className="text-xs text-gray-500">
-              P: {Math.round(meal.totals.protein)}g · 
-              F: {Math.round(meal.totals.fat)}g · 
+              P: {Math.round(meal.totals.protein)}g ·
+              F: {Math.round(meal.totals.fat)}g ·
               C: {Math.round(meal.totals.carbs)}g
             </div>
           </div>
@@ -158,9 +197,7 @@ export default function MealCard({
             🗑️
           </button>
           <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ${
-              isExpanded ? 'rotate-180' : ''
-            }`}
+            className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
