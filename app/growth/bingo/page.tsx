@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
 import { readLocalJson, writeLocalJson } from '@/lib/localPersistence';
+import { optimizeColors, type ColorGrid } from '@/lib/bingoColorOptimizer';
 
 type Category = { id: string; label: string; color: string };
 type Goal = { id: string; label: string; categoryId: string };
@@ -38,146 +39,6 @@ const shuffle = <T,>(list: T[]): T[] => {
   }
   return next;
 };
-
-// ── Color optimizer ───────────────────────────────────────────────────────────
-// Reassigns category colors to cells in an N×N grid so that:
-//   Hard constraint: no two orthogonally or diagonally adjacent cells share a color.
-//   Soft constraints: even color distribution, no row/column dominated by one color.
-//
-// Uses backtracking with forward-checking (AC-1) and a scored objective.
-// Returns null if no valid assignment exists (e.g., too few colors for the grid).
-
-type ColorGrid = (string | null)[][];
-
-export function optimizeColors(
-  grid: BingoCell[],
-  palette: string[],
-  size: number
-): ColorGrid | null {
-  if (palette.length === 0) return null;
-
-  // Build adjacency list: each cell index → list of neighbor indices.
-  // "Adjacent" = orthogonal + diagonal (8-directional).
-  const neighbors = (idx: number): number[] => {
-    const row = Math.floor(idx / size);
-    const col = idx % size;
-    const result: number[] = [];
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        const r = row + dr;
-        const c = col + dc;
-        if (r >= 0 && r < size && c >= 0 && c < size) {
-          result.push(r * size + c);
-        }
-      }
-    }
-    return result;
-  };
-
-  const total = size * size;
-  const assignment: (string | null)[] = Array(total).fill(null);
-  // Free center always has no color (it's exempt).
-  const freeIdx = Math.floor(total / 2);
-
-  // Count how many times each color has been used so far — used for soft constraints.
-  const colorCount = new Map<string, number>();
-  palette.forEach((c) => colorCount.set(c, 0));
-
-  // Score a candidate color assignment for softness. Lower = better.
-  const softScore = (idx: number, color: string): number => {
-    let score = colorCount.get(color) ?? 0; // prefer less-used colors
-    const row = Math.floor(idx / size);
-    const col = idx % size;
-    // Penalty if the color already appears elsewhere in the same row/column.
-    for (let c2 = 0; c2 < size; c2++) {
-      if (c2 !== col && assignment[row * size + c2] === color) score += 3;
-    }
-    for (let r2 = 0; r2 < size; r2++) {
-      if (r2 !== row && assignment[r2 * size + col] === color) score += 3;
-    }
-    return score;
-  };
-
-  // Backtracking solver — assign colors to non-free cells in order.
-  const solve = (cellIdx: number): boolean => {
-    if (cellIdx === total) return true;
-
-    // Skip the free center cell.
-    if (cellIdx === freeIdx) return solve(cellIdx + 1);
-
-    // Collect neighbor colors to exclude (hard constraint).
-    const usedByNeighbors = new Set<string>(
-      neighbors(cellIdx)
-        .map((n) => assignment[n])
-        .filter(Boolean) as string[]
-    );
-
-    // Order candidates by soft score ascending (prefer balanced distribution).
-    const candidates = palette
-      .filter((c) => !usedByNeighbors.has(c))
-      .sort((a, b) => softScore(cellIdx, a) - softScore(cellIdx, b));
-
-    for (const color of candidates) {
-      assignment[cellIdx] = color;
-      colorCount.set(color, (colorCount.get(color) ?? 0) + 1);
-
-      if (solve(cellIdx + 1)) return true;
-
-      // Backtrack.
-      assignment[cellIdx] = null;
-      colorCount.set(color, (colorCount.get(color) ?? 1) - 1);
-    }
-
-    return false; // no valid color found for this cell
-  };
-
-  if (!solve(0)) return null;
-
-  // Reshape flat array into 2-D grid.
-  return Array.from({ length: size }, (_, r) =>
-    Array.from({ length: size }, (_, c) => assignment[r * size + c])
-  );
-}
-
-/** Validate a color assignment and return a list of violated rule descriptions. */
-export function validateColors(colorGrid: ColorGrid, palette: string[]): string[] {
-  const size = colorGrid.length;
-  const violations: string[] = [];
-  const freeRow = Math.floor(size / 2);
-  const freeCol = Math.floor(size / 2);
-
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (r === freeRow && c === freeCol) continue;
-      const color = colorGrid[r][c];
-      if (!color) {
-        violations.push(`Cell (${r},${c}) has no color assigned.`);
-        continue;
-      }
-      if (!palette.includes(color)) {
-        violations.push(`Cell (${r},${c}) has color "${color}" not in palette.`);
-      }
-      // Check 8-directional neighbors.
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          if (dr === 0 && dc === 0) continue;
-          const nr = r + dr;
-          const nc = c + dc;
-          if (nr >= 0 && nr < size && nc >= 0 && nc < size) {
-            if (nr === freeRow && nc === freeCol) continue;
-            if (colorGrid[nr][nc] === color) {
-              violations.push(
-                `Adjacent cells (${r},${c}) and (${nr},${nc}) share color "${color}".`
-              );
-            }
-          }
-        }
-      }
-    }
-  }
-  return violations;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
