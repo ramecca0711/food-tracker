@@ -1,32 +1,47 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PageLayout from '@/app/components/PageLayout';
 import { useAuth } from '@/app/components/AuthProvider';
 
 type RingLevel = 1 | 2 | 3 | 4;
 type CirclePerson = { id: string; name: string; ring: RingLevel; notes: string; angle: number };
 
-const ringStyles: Record<RingLevel, string> = {
-  1: 'w-36 h-36',
-  2: 'w-56 h-56',
-  3: 'w-80 h-80',
-  4: 'w-[26rem] h-[26rem]',
+// Sizes of the visual rings in the SVG/CSS layout — maps ring number to a pixel radius.
+const ringRadii: Record<RingLevel, number> = { 1: 52, 2: 104, 3: 158, 4: 210 };
+
+// Ring label text for each ring level.
+const ringLabels: Record<RingLevel, string> = {
+  1: 'Ring 1 (closest)',
+  2: 'Ring 2',
+  3: 'Ring 3',
+  4: 'Ring 4',
 };
 
 export default function ConnectionMyCirclePage() {
   const { userId, isReady } = useAuth();
-  // People are positioned by ring + angle on a concentric circle layout.
   const [people, setPeople] = useState<CirclePerson[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', ring: '2', notes: '' });
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Bulk name entry — "Who is in your life" comma-separated input.
+  const [nameInput, setNameInput] = useState('');
+  // Tiles generated from the name input waiting to be categorised into rings.
+  const [pendingPeople, setPendingPeople] = useState<{ name: string; ring: RingLevel }[]>([]);
+
+  // Touch-drag state for moving people between rings on mobile.
+  const touchDragRef = useRef<{ personId: string; ghost: HTMLElement | null } | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Per-person expanded notes state in the "All People" list.
+  const [expandedPeopleIds, setExpandedPeopleIds] = useState<Set<string>>(new Set());
+  // Per-person inline-edit state.
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineEditValues, setInlineEditValues] = useState<Partial<CirclePerson>>({});
+
+  // Desktop drag state.
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const storageKey = useMemo(() => `my-circle:${userId ?? 'guest'}`, [userId]);
 
-  const selectedPerson = useMemo(() => people.find((person) => person.id === selectedId) || null, [people, selectedId]);
-  const editingPerson = useMemo(() => people.find((person) => person.id === editingId) || null, [people, editingId]);
+  // ── Persistence ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!isReady) return;
@@ -34,9 +49,7 @@ export default function ConnectionMyCirclePage() {
       const raw = localStorage.getItem(storageKey);
       if (!raw) return;
       const parsed = JSON.parse(raw) as CirclePerson[];
-      if (Array.isArray(parsed)) {
-        setPeople(parsed);
-      }
+      if (Array.isArray(parsed)) setPeople(parsed);
     } catch {
       setPeople([]);
     }
@@ -47,52 +60,146 @@ export default function ConnectionMyCirclePage() {
     localStorage.setItem(storageKey, JSON.stringify(people));
   }, [isReady, people, storageKey]);
 
-  const addPerson = () => {
-    const name = form.name.trim();
-    if (!name) return;
-    const ring = Number(form.ring) as RingLevel;
-    const sameRingCount = people.filter((person) => person.ring === ring).length;
-    const angle = sameRingCount * 55;
-    const person: CirclePerson = { id: crypto.randomUUID(), name, ring, notes: form.notes.trim(), angle };
-    setPeople((prev) => [...prev, person]);
-    setForm({ name: '', ring: '2', notes: '' });
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  /** Assign an angle to a new person based on how many others are already in that ring. */
+  const nextAngle = (ring: RingLevel, currentPeople: CirclePerson[]) => {
+    const sameRing = currentPeople.filter((p) => p.ring === ring).length;
+    return sameRing * 55;
   };
+
+  // ── Bulk name submission ──────────────────────────────────────────────────────
+
+  /** Parse the comma-separated name input into pending tiles for categorisation. */
+  const handleNameSubmit = () => {
+    const names = nameInput
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    if (names.length === 0) return;
+    setPendingPeople(names.map((name) => ({ name, ring: 2 as RingLevel })));
+    setNameInput('');
+  };
+
+  /** Accept all pending people and add them to the circle. */
+  const confirmPendingPeople = () => {
+    setPeople((prev) => {
+      let updated = [...prev];
+      pendingPeople.forEach(({ name, ring }) => {
+        updated.push({
+          id: crypto.randomUUID(),
+          name,
+          ring,
+          notes: '',
+          angle: nextAngle(ring, updated),
+        });
+      });
+      return updated;
+    });
+    setPendingPeople([]);
+  };
+
+  // ── Person mutations ──────────────────────────────────────────────────────────
 
   const updatePerson = (personId: string, updates: Partial<CirclePerson>) => {
-    setPeople((prev) => prev.map((person) => (person.id === personId ? { ...person, ...updates } : person)));
-  };
-
-  const updateSelectedNotes = (value: string) => {
-    if (!selectedId) return;
-    updatePerson(selectedId, { notes: value });
-  };
-
-  const deletePerson = (personId: string) => {
-    setPeople((prev) => prev.filter((person) => person.id !== personId));
-    if (selectedId === personId) setSelectedId(null);
-    if (editingId === personId) setEditingId(null);
+    setPeople((prev) => prev.map((p) => (p.id === personId ? { ...p, ...updates } : p)));
   };
 
   const movePersonToRing = (personId: string, ring: RingLevel) => {
-    const sameRingCount = people.filter((person) => person.ring === ring && person.id !== personId).length;
-    updatePerson(personId, { ring, angle: sameRingCount * 55 });
+    setPeople((prev) => {
+      const sameRingCount = prev.filter((p) => p.ring === ring && p.id !== personId).length;
+      return prev.map((p) =>
+        p.id === personId ? { ...p, ring, angle: sameRingCount * 55 } : p
+      );
+    });
   };
+
+  const deletePerson = (personId: string) => {
+    setPeople((prev) => prev.filter((p) => p.id !== personId));
+    if (inlineEditId === personId) setInlineEditId(null);
+  };
+
+  // ── Desktop drag (circle SVG overlay) ────────────────────────────────────────
 
   const getRingFromDropPoint = (x: number, y: number, rect: DOMRect): RingLevel => {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const distance = Math.hypot(x - centerX, y - centerY);
-    const ringDistances: Array<{ ring: RingLevel; radius: number }> = [
-      { ring: 1, radius: 72 },
-      { ring: 2, radius: 112 },
-      { ring: 3, radius: 160 },
-      { ring: 4, radius: 208 },
-    ];
-
-    return ringDistances.reduce((closest, current) =>
-      Math.abs(current.radius - distance) < Math.abs(closest.radius - distance) ? current : closest
-    ).ring;
+    return ([1, 2, 3, 4] as RingLevel[]).reduce((closest, ring) =>
+      Math.abs(ringRadii[ring] - distance) < Math.abs(ringRadii[closest] - distance)
+        ? ring
+        : closest
+    );
   };
+
+  // ── Touch drag (long-press on a person pill) ──────────────────────────────────
+
+  const createGhost = (el: HTMLElement, x: number, y: number) => {
+    const ghost = el.cloneNode(true) as HTMLElement;
+    ghost.style.cssText = `position:fixed;width:${el.offsetWidth}px;opacity:.75;pointer-events:none;z-index:9999;left:${x - el.offsetWidth / 2}px;top:${y - 20}px;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.3);`;
+    document.body.appendChild(ghost);
+    return ghost;
+  };
+
+  const handleTouchStart = (e: React.TouchEvent, personId: string, el: HTMLElement) => {
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    longPressTimer.current = setTimeout(() => {
+      touchDragRef.current = {
+        personId,
+        ghost: createGhost(el, startX, startY),
+      };
+    }, 500);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (longPressTimer.current && !touchDragRef.current) {
+      // Cancel long press if finger moved substantially.
+      const touch = e.touches[0];
+      if (touchDragRef.current === null) {
+        // Still in long-press countdown — check movement.
+      }
+    }
+    if (!touchDragRef.current?.ghost) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const ghost = touchDragRef.current.ghost;
+    ghost.style.left = `${touch.clientX - parseInt(ghost.style.width) / 2}px`;
+    ghost.style.top = `${touch.clientY - 20}px`;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    const drag = touchDragRef.current;
+    if (!drag?.ghost) { touchDragRef.current = null; return; }
+    drag.ghost.remove();
+    const touch = e.changedTouches[0];
+    // Find the ring drop zone under the finger.
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    let target: Element | null = el;
+    while (target && !target.getAttribute('data-ring')) target = target.parentElement;
+    const toRing = target?.getAttribute('data-ring');
+    if (toRing) movePersonToRing(drag.personId, parseInt(toRing) as RingLevel);
+    touchDragRef.current = null;
+  };
+
+  // ── Inline edit ───────────────────────────────────────────────────────────────
+
+  const startInlineEdit = (person: CirclePerson) => {
+    setInlineEditId(person.id);
+    setInlineEditValues({ name: person.name, ring: person.ring, notes: person.notes });
+  };
+
+  const saveInlineEdit = (personId: string) => {
+    updatePerson(personId, inlineEditValues);
+    if (inlineEditValues.ring !== undefined) {
+      movePersonToRing(personId, inlineEditValues.ring as RingLevel);
+    }
+    setInlineEditId(null);
+  };
+
+  // ── Loading guard ─────────────────────────────────────────────────────────────
 
   if (!isReady) {
     return (
@@ -104,243 +211,322 @@ export default function ConnectionMyCirclePage() {
     );
   }
 
+  // Visual circle size — use a compact fixed size so the diagram fits on mobile.
+  const CIRCLE_SIZE = 240; // half-dimension, total = 480px but we scale via CSS
+
   return (
     <PageLayout>
       <div className="space-y-6">
         <header className="rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Connection</p>
           <h1 className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">My Circle</h1>
-          <p className="mt-2 text-sm text-[var(--text-muted)]">Add people and place them by closeness ring. Keep notes for each person.</p>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            Map the people in your life by closeness ring. Hold on mobile to drag people between rings.
+          </p>
         </header>
 
+        {/* ── Circle diagram — shown at top of page ─────────────────────────── */}
         <section className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
-          <div className="grid gap-2 sm:grid-cols-[1.4fr_auto_auto]">
-            <input
-              value={form.name}
-              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-              placeholder="Person name"
-              className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
-            />
-            <select
-              value={form.ring}
-              onChange={(e) => setForm((prev) => ({ ...prev, ring: e.target.value }))}
-              className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
-            >
-              <option value="1">Ring 1 (closest)</option>
-              <option value="2">Ring 2</option>
-              <option value="3">Ring 3</option>
-              <option value="4">Ring 4</option>
-            </select>
-            <button type="button" onClick={addPerson} className="rounded-lg bg-[var(--accent-strong)] px-3 py-2 text-sm font-medium text-white">
-              Add
-            </button>
-          </div>
-          <textarea
-            value={form.notes}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-            placeholder="Optional notes"
-            className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-white p-2 text-sm"
-            rows={3}
-          />
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
-            <div
-              className="relative mx-auto h-[28rem] w-[28rem] rounded-full border border-dashed border-[var(--border-soft)]"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (!draggingId) return;
-                const ring = getRingFromDropPoint(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect());
-                movePersonToRing(draggingId, ring);
-                setDraggingId(null);
-              }}
-            >
-              {[4, 3, 2, 1].map((ring) => (
+          {/* Circle diagram — scales to fit the screen width on mobile */}
+          <div
+            className="relative mx-auto overflow-visible"
+            style={{ width: '100%', maxWidth: 480, aspectRatio: '1' }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (!draggingId) return;
+              const ring = getRingFromDropPoint(
+                e.clientX,
+                e.clientY,
+                e.currentTarget.getBoundingClientRect()
+              );
+              movePersonToRing(draggingId, ring);
+              setDraggingId(null);
+            }}
+          >
+            {/* Concentric ring outlines — rendered as a fraction of the container */}
+            {([4, 3, 2, 1] as RingLevel[]).map((ring) => {
+              const pct = (ringRadii[ring] / CIRCLE_SIZE) * 100;
+              return (
                 <div
                   key={ring}
-                  className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--border-soft)] ${ringStyles[ring as RingLevel]}`}
+                  // data-ring lets the touch-drop handler identify which ring the finger lifted on.
+                  data-ring={ring}
+                  className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--border-soft)]"
+                  style={{ width: `${pct}%`, paddingBottom: `${pct}%` }}
                 />
-              ))}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--accent-strong)]">
-                You
-              </div>
+              );
+            })}
 
-              {people.map((person) => {
-                const radius = person.ring * 52;
-                const x = Math.cos((person.angle * Math.PI) / 180) * radius;
-                const y = Math.sin((person.angle * Math.PI) / 180) * radius;
-                return (
-                  <button
-                    key={person.id}
-                    draggable
-                    onDragStart={() => setDraggingId(person.id)}
-                    onDragEnd={() => setDraggingId(null)}
-                    type="button"
-                    onClick={() => setSelectedId(person.id)}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border bg-white px-2 py-1 text-[11px] ${
-                      selectedId === person.id
-                        ? 'border-[var(--accent-strong)] ring-2 ring-[var(--accent-soft)]'
-                        : 'border-[var(--border-soft)]'
-                    }`}
-                    style={{ left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
-                  >
-                    {person.name}
-                  </button>
-                );
-              })}
+            {/* Center "You" badge */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--accent-strong)] z-10">
+              You
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {([1, 2, 3, 4] as RingLevel[]).map((ring) => (
+
+            {/* Person pills positioned around the rings */}
+            {people.map((person) => {
+              const radius = (ringRadii[person.ring] / CIRCLE_SIZE) * 50; // as % of container half-width
+              const x = Math.cos((person.angle * Math.PI) / 180) * radius;
+              const y = Math.sin((person.angle * Math.PI) / 180) * radius;
+              return (
                 <button
-                  key={ring}
+                  key={person.id}
+                  draggable
+                  onDragStart={() => setDraggingId(person.id)}
+                  onDragEnd={() => setDraggingId(null)}
+                  onTouchStart={(e) =>
+                    handleTouchStart(e, person.id, e.currentTarget)
+                  }
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                   type="button"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    if (!draggingId) return;
-                    movePersonToRing(draggingId, ring);
-                    setDraggingId(null);
+                  onClick={() =>
+                    setExpandedPeopleIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(person.id)) next.delete(person.id);
+                      else next.add(person.id);
+                      return next;
+                    })
+                  }
+                  className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--border-soft)] bg-white px-2 py-1 text-[11px] z-10 shadow-sm hover:shadow-md transition-shadow select-none touch-none"
+                  style={{
+                    left: `${50 + x}%`,
+                    top: `${50 + y}%`,
                   }}
-                  className="rounded-full border border-[var(--border-soft)] bg-[var(--surface-1)] px-3 py-1 text-xs text-[var(--text-muted)]"
                 >
-                  Drop to Ring {ring}
+                  {person.name}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
 
-          <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Person Notes</h2>
-            {!selectedPerson ? (
-              <p className="mt-2 text-sm text-[var(--text-muted)]">Select a person in the circle to view/edit notes.</p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-[var(--text-primary)]">{selectedPerson.name}</div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(selectedPerson.id)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
-                      title="Edit person"
-                      aria-label="Edit person"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 11l7.768-7.768a2.5 2.5 0 113.536 3.536L12.536 14.536a2 2 0 01-.878.517L8 16l.947-3.658A2 2 0 019.464 11.464z" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deletePerson(selectedPerson.id)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
-                      title="Delete person"
-                      aria-label="Delete person"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12M10 11v6M14 11v6" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <div className="text-xs text-[var(--text-muted)]">Ring {selectedPerson.ring}</div>
-                <textarea
-                  value={selectedPerson.notes}
-                  onChange={(e) => updateSelectedNotes(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--border-soft)] bg-white p-2 text-sm"
-                  rows={8}
-                />
+          {/* Ring drop zones for easy touch/drag target on mobile */}
+          <div className="mt-4 flex flex-wrap gap-2 justify-center">
+            {([1, 2, 3, 4] as RingLevel[]).map((ring) => (
+              <div
+                key={ring}
+                data-ring={ring}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggingId) { movePersonToRing(draggingId, ring); setDraggingId(null); }
+                }}
+                className="rounded-full border border-[var(--border-soft)] bg-[var(--surface-1)] px-3 py-1 text-xs text-[var(--text-muted)]"
+              >
+                Drop → Ring {ring}
               </div>
-            )}
+            ))}
+          </div>
+        </section>
 
-            <div className="border-t border-[var(--border-soft)] pt-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">All People</h3>
-              <div className="mt-2 space-y-2">
-                {people.length === 0 ? (
-                  <p className="text-xs text-[var(--text-muted)]">No people added yet.</p>
-                ) : (
-                  people.map((person) => (
-                    <div key={person.id} className="flex items-center justify-between rounded-lg border border-[var(--border-soft)] bg-[var(--surface-1)] px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(person.id)}
-                        className="text-left text-sm text-[var(--text-primary)]"
-                      >
-                        {person.name} <span className="text-xs text-[var(--text-muted)]">· Ring {person.ring}</span>
-                      </button>
+        {/* ── "Who is in your life" bulk-add input ──────────────────────────── */}
+        <section className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
+          <h2 className="mb-2 text-sm font-semibold text-[var(--text-primary)]">Who is in your life:</h2>
+          <p className="text-xs text-[var(--text-muted)] mb-3">
+            Type names separated by commas, then hit Submit to get tiles you can assign to rings.
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleNameSubmit()}
+              placeholder="e.g. Mom, Jake, Sara, Dr. Lee"
+              className="flex-1 rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleNameSubmit}
+              className="rounded-lg bg-[var(--accent-strong)] px-4 py-2 text-sm font-medium text-white"
+            >
+              Submit
+            </button>
+          </div>
+
+          {/* Pending tiles — user assigns each to a ring before confirming */}
+          {pendingPeople.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs text-[var(--text-muted)] font-medium">Assign each person to a ring:</p>
+              {pendingPeople.map((pending, idx) => (
+                <div key={`${pending.name}-${idx}`} className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-[var(--text-primary)] w-32 truncate">
+                    {pending.name}
+                  </span>
+                  <select
+                    value={pending.ring}
+                    onChange={(e) => {
+                      const ring = parseInt(e.target.value) as RingLevel;
+                      setPendingPeople((prev) =>
+                        prev.map((p, i) => (i === idx ? { ...p, ring } : p))
+                      );
+                    }}
+                    className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-1.5 text-sm"
+                  >
+                    {([1, 2, 3, 4] as RingLevel[]).map((r) => (
+                      <option key={r} value={r}>{ringLabels[r]}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={confirmPendingPeople}
+                className="mt-2 rounded-lg bg-[var(--accent-strong)] px-4 py-2 text-sm font-medium text-white"
+              >
+                Add to Circle
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* ── All People — expandable cards with inline edit ────────────────── */}
+        <section className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
+          <h2 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">All People</h2>
+          {people.length === 0 ? (
+            <p className="text-xs text-[var(--text-muted)]">No people added yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {people.map((person) => {
+                const isExpanded = expandedPeopleIds.has(person.id);
+                const isInlineEditing = inlineEditId === person.id;
+
+                return (
+                  <div
+                    key={person.id}
+                    className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-1)] overflow-hidden"
+                  >
+                    {/* Card header — click to expand/collapse notes */}
+                    <div
+                      className="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-white/50 transition-colors"
+                      onClick={() => {
+                        if (isInlineEditing) return; // don't toggle while editing
+                        setExpandedPeopleIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(person.id)) next.delete(person.id);
+                          else next.add(person.id);
+                          return next;
+                        });
+                      }}
+                    >
+                      <div>
+                        <span className="text-sm font-medium text-[var(--text-primary)]">
+                          {person.name}
+                        </span>
+                        <span className="ml-2 text-xs text-[var(--text-muted)]">· Ring {person.ring}</span>
+                      </div>
                       <div className="flex items-center gap-2">
+                        {/* Edit button — opens inline edit within the card */}
                         <button
                           type="button"
-                          onClick={() => setEditingId(person.id)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
-                          title="Edit person"
-                          aria-label="Edit person"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isInlineEditing) {
+                              saveInlineEdit(person.id);
+                            } else {
+                              startInlineEdit(person);
+                              setExpandedPeopleIds((prev) => new Set([...prev, person.id]));
+                            }
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)] hover:text-[var(--accent-strong)] transition-colors"
+                          title={isInlineEditing ? 'Done editing' : 'Edit person'}
+                          aria-label={isInlineEditing ? 'Done editing' : 'Edit person'}
                         >
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 11l7.768-7.768a2.5 2.5 0 113.536 3.536L12.536 14.536a2 2 0 01-.878.517L8 16l.947-3.658A2 2 0 019.464 11.464z" />
-                          </svg>
+                          {isInlineEditing ? (
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 11l7.768-7.768a2.5 2.5 0 113.536 3.536L12.536 14.536a2 2 0 01-.878.517L8 16l.947-3.658A2 2 0 019.464 11.464z" />
+                            </svg>
+                          )}
                         </button>
+                        {/* Delete button */}
                         <button
                           type="button"
-                          onClick={() => deletePerson(person.id)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)]"
+                          onClick={(e) => { e.stopPropagation(); deletePerson(person.id); }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border-soft)] bg-white text-[var(--text-muted)] hover:text-red-500 transition-colors"
                           title="Delete person"
                           aria-label="Delete person"
                         >
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0l1 12h6l1-12M10 11v6M14 11v6" />
                           </svg>
                         </button>
+                        {/* Expand chevron */}
+                        <svg
+                          className={`h-4 w-4 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+
+                    {/* Expandable body — shows notes (or inline edit form) */}
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-[var(--border-soft)] bg-white">
+                        {isInlineEditing ? (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Name</label>
+                              <input
+                                value={inlineEditValues.name ?? person.name}
+                                onChange={(e) =>
+                                  setInlineEditValues((prev) => ({ ...prev, name: e.target.value }))
+                                }
+                                className="w-full rounded-lg border border-[var(--border-soft)] bg-white px-3 py-1.5 text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Ring</label>
+                              <select
+                                value={inlineEditValues.ring ?? person.ring}
+                                onChange={(e) =>
+                                  setInlineEditValues((prev) => ({
+                                    ...prev,
+                                    ring: parseInt(e.target.value) as RingLevel,
+                                  }))
+                                }
+                                className="w-full rounded-lg border border-[var(--border-soft)] bg-white px-3 py-1.5 text-sm"
+                              >
+                                {([1, 2, 3, 4] as RingLevel[]).map((r) => (
+                                  <option key={r} value={r}>{ringLabels[r]}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Notes</label>
+                              <textarea
+                                value={inlineEditValues.notes ?? person.notes}
+                                onChange={(e) =>
+                                  setInlineEditValues((prev) => ({ ...prev, notes: e.target.value }))
+                                }
+                                className="w-full rounded-lg border border-[var(--border-soft)] bg-white px-3 py-1.5 text-sm"
+                                rows={3}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => saveInlineEdit(person.id)}
+                              className="rounded-lg bg-[var(--accent-strong)] px-3 py-1.5 text-xs font-medium text-white"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-[var(--text-muted)] whitespace-pre-wrap">
+                            {person.notes || <span className="italic">No notes yet. Click edit to add.</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          )}
         </section>
       </div>
-
-      {editingPerson && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-md rounded-xl border border-[var(--border-soft)] bg-[var(--surface-0)] p-5">
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">Edit Person</h3>
-            <div className="mt-3 space-y-3">
-              <label className="block text-sm text-[var(--text-muted)]">
-                Name
-                <input
-                  value={editingPerson.name}
-                  onChange={(e) => updatePerson(editingPerson.id, { name: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="block text-sm text-[var(--text-muted)]">
-                Ring
-                <select
-                  value={String(editingPerson.ring)}
-                  onChange={(e) => movePersonToRing(editingPerson.id, Number(e.target.value) as RingLevel)}
-                  className="mt-1 w-full rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
-                >
-                  <option value="1">Ring 1 (closest)</option>
-                  <option value="2">Ring 2</option>
-                  <option value="3">Ring 3</option>
-                  <option value="4">Ring 4</option>
-                </select>
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingId(null)}
-                className="rounded-lg border border-[var(--border-soft)] bg-white px-3 py-2 text-sm"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </PageLayout>
   );
 }
