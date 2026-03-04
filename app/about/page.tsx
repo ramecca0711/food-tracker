@@ -15,9 +15,9 @@ export default function AboutPage() {
     <PageLayout>
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">About HomeBase</h1>
+          <h1 className="text-4xl font-bold text-gray-900">About Home Base</h1>
           <p className="mt-3 text-lg text-gray-600">
-            Life is like a piece of pie — meant to be enjoyed in slices, and built with intention.
+            Build a home within yourself.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Tag>Rooted</Tag>
@@ -41,27 +41,25 @@ export default function AboutPage() {
             </p>
 
             <p className="text-gray-700 mb-4">
-              HomeBase is the system I use to keep my life coherent — food, movement, mood, goals,
+              Home Base is the system I use to keep my life coherent — food, movement, mood, goals,
               and relationships — all in one place. It’s for people who want clarity without
               complexity, and reflection without shame.
             </p>
 
-            <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Why HomeBase?</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Why Home Base?</h2>
             <p className="text-gray-700 mb-4">
-              Life is like a piece of pie. It’s not one thing — it’s made of slices. You don’t have
-              to “optimize everything.” You just need a simple way to notice what’s working, what’s
-              missing, and what you want more of.
+              Life is not one thing. You don’t have to “optimize everything.” You just need a
+              simple way to notice what’s working, what’s missing, and what you want more of.
             </p>
 
             <p className="text-gray-700 mb-4">
-              In HomeBase, <strong>Home is the whole pie</strong>. Each slice represents a domain
-              you can click into (Wellbeing, Growth, Connection, and Life Systems). It’s meant to
-              feel both cute <em>and</em> real — because that’s life.
+              In Home Base, each area represents a domain you can click into (Wellbeing, Growth,
+              Connection, and Life Systems). It’s meant to feel both calm <em>and</em> real.
             </p>
 
             <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Driven by Research & Math</h2>
             <p className="text-gray-700 mb-4">
-              HomeBase isn’t just feel-good philosophy. It’s built on evidence-backed ideas and
+              Home Base isn’t just feel-good philosophy. It’s built on evidence-backed ideas and
               practical measurement — using simple inputs to generate useful insight.
             </p>
             <ul className="list-disc list-inside text-gray-700 mb-4 space-y-2">
@@ -101,13 +99,13 @@ export default function AboutPage() {
 
             <h2 className="text-2xl font-bold text-gray-900 mt-10 mb-4">Built in Public</h2>
             <p className="text-gray-700 mt-2">
-              This is a work in progress — just like all of us. I’m building HomeBase with real use
+              This is a work in progress — just like all of us. I’m building Home Base with real use
               in mind: shipping, learning, iterating, and keeping what’s genuinely helpful.
             </p>
 
             <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-6">
               <p className="text-gray-800 m-0">
-                Thank you for being here. Let’s celebrate life — one slice at a time. 🥧
+                Thank you for being here. Let’s keep building, one day at a time.
               </p>
             </div>
           </div>

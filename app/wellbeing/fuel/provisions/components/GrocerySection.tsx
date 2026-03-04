@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getDeviceDateInputValue } from '@/lib/deviceDate';
 import QuantityInput from '@/app/components/QuantityInput';
 
 interface GroceryItem {
@@ -169,12 +170,12 @@ export default function GroceryListSection({ userId }: GroceryListSectionProps) 
     const expirationResponse = await fetch('/api/estimate-expiration', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        foodName: item.item_name,
-        storageLocation: 'fridge',
-        dateAdded: new Date().toISOString().split('T')[0]
-      })
-    });
+        body: JSON.stringify({
+          foodName: item.item_name,
+          storageLocation: 'fridge',
+          dateAdded: getDeviceDateInputValue()
+        })
+      });
 
     let expirationDate = null;
     if (expirationResponse.ok) {

@@ -12,6 +12,9 @@ interface SummaryCardsProps {
   goals: any;
   expandedBioPeriods: Set<string>;
   onToggleBioPeriod: (period: string) => void;
+  // How many days passed the completeness check in each window
+  sevenDayValidCount?:  number;
+  thirtyDayValidCount?: number;
 }
 
 export default function SummaryCards({
@@ -23,7 +26,9 @@ export default function SummaryCards({
   thirtyDayBiodiversity,
   goals,
   expandedBioPeriods,
-  onToggleBioPeriod
+  onToggleBioPeriod,
+  sevenDayValidCount,
+  thirtyDayValidCount,
 }: SummaryCardsProps) {
 
   const getProgressColor = (actual: number, target: number, metric: 'calories' | 'macro' | 'fiber') => {
@@ -233,8 +238,14 @@ export default function SummaryCards({
 
       {/* 7-DAY AVERAGE CARD */}
       <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-2xl p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <div className="text-sm font-medium text-blue-600">7-Day Average</div>
+          {/* Shows how many valid (complete) days contributed to this average */}
+          {sevenDayValidCount !== undefined && (
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-200 text-blue-800 border border-blue-300">
+              {sevenDayValidCount}/7 days logged
+            </span>
+          )}
         </div>
         
         <div className="mb-1">
@@ -386,8 +397,14 @@ export default function SummaryCards({
 
       {/* 30-DAY AVERAGE CARD */}
       <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-2xl p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <div className="text-sm font-medium text-purple-600">30-Day Average</div>
+          {/* Shows how many valid (complete) days contributed to this average */}
+          {thirtyDayValidCount !== undefined && (
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-purple-200 text-purple-800 border border-purple-300">
+              {thirtyDayValidCount}/30 days logged
+            </span>
+          )}
         </div>
         
         <div className="mb-1">

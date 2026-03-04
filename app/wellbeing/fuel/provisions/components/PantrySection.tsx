@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getDeviceDateInputValue } from '@/lib/deviceDate';
 import QuantityInput from '@/app/components/QuantityInput';
 
 interface PantryItem {
@@ -86,7 +87,7 @@ export default function PantrySection({ userId }: PantrySectionProps) {
           body: JSON.stringify({
             foodName: itemName,
             storageLocation: 'fridge',
-            dateAdded: new Date().toISOString().split('T')[0]
+            dateAdded: getDeviceDateInputValue()
           })
         });
 

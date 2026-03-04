@@ -1,40 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { useState } from 'react';
+import PageLayout from '@/app/components/PageLayout';
+import { useAuth } from '@/app/components/AuthProvider';
+
+// Dummy account ID for Jamie — pre-loaded with food data for testing/demo purposes.
+// Switch to this account to view the app as a user with existing data without
+// affecting your own food_items rows.
+const JAMIE_USER_ID = 'jamie-demo-account';
 
 export default function DebugPage() {
-  const router = useRouter();
-
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { userId: realUserId } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [dryRun, setDryRun] = useState(false);
 
-  useEffect(() => {
-    checkUser();
-  }, []);
-
-  async function checkUser() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      router.push('/');
-      return;
-    }
-
-    setUserId(session.user.id);
-    setUserEmail(session.user.email ?? null);
-    setIsLoading(false);
-  }
+  // Account view toggle: 'mine' uses the authenticated user's data,
+  // 'jamie' uses the shared demo account so devs can see seeded data.
+  const [accountView, setAccountView] = useState<'mine' | 'jamie'>('mine');
+  const activeUserId = accountView === 'jamie' ? JAMIE_USER_ID : realUserId;
 
   async function runBackfill() {
-    if (!userId) return;
+    if (!activeUserId) return;
 
     setIsProcessing(true);
     setResult(null);
@@ -44,62 +31,80 @@ export default function DebugPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId,
+          userId: activeUserId,
           dryRun,
-          limit: 500, // adjust if needed
+          limit: 500,
         }),
       });
 
       const data = await response.json();
       setResult(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setResult({
         error: 'Failed to run backfill',
-        details: error?.message || String(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     } finally {
       setIsProcessing(false);
     }
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    router.push('/');
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-gray-500">Loading…</div>
-      </div>
-    );
-  }
-
-  if (!userId) return null;
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    // PageLayout provides the Sidebar and auth guard — same as all other pages.
+    <PageLayout>
       <div className="max-w-3xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Debug Tools
-        </h1>
+        <h1 className="text-3xl font-bold text-[var(--text-primary)]">Debug Tools</h1>
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">
-            ⚠️ Admin tool. This will modify your database.
-          </p>
+        <div className="bg-[var(--accent-soft)] border border-[var(--border-soft)] rounded-lg p-4">
+          <p className="text-sm text-[var(--text-muted)]">Admin tool. This may modify database rows.</p>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Backfill Biodiversity Data
-          </h2>
-
-          <p className="text-sm text-gray-600">
-            Re-analyzes food items missing whole_food_ingredients.
+        {/* ── Account View Switcher ────────────────────────────────────────────
+            Toggle between your real account and the Jamie demo account so you
+            can test pages that show existing data without polluting your own. */}
+        <div className="bg-[var(--surface-0)] border border-[var(--border-soft)] rounded-xl p-5 space-y-3">
+          <h2 className="text-base font-semibold text-[var(--text-primary)]">Adjust View Context</h2>
+          <p className="text-sm text-[var(--text-muted)]">
+            Switch to the Jamie demo account to view pages with pre-loaded food data.
+            Operations performed while in Jamie mode target Jamie&apos;s rows.
           </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setAccountView('mine')}
+              className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                accountView === 'mine'
+                  ? 'border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]'
+                  : 'border-[var(--border-soft)] bg-white text-[var(--text-muted)]'
+              }`}
+            >
+              My Account
+            </button>
+            <button
+              type="button"
+              onClick={() => setAccountView('jamie')}
+              className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                accountView === 'jamie'
+                  ? 'border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]'
+                  : 'border-[var(--border-soft)] bg-white text-[var(--text-muted)]'
+              }`}
+            >
+              Jamie (Demo)
+            </button>
+          </div>
+          {accountView === 'jamie' && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
+              Viewing as Jamie demo account — backfill operations will run against Jamie&apos;s data.
+            </p>
+          )}
+        </div>
 
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
+        {/* ── Backfill Tool ─────────────────────────────────────────────────── */}
+        <div className="bg-[var(--surface-0)] border border-[var(--border-soft)] rounded-xl p-6 space-y-4">
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Backfill Biodiversity Data</h2>
+          <p className="text-sm text-[var(--text-muted)]">Re-analyzes food items missing whole_food_ingredients.</p>
+
+          <label className="flex items-center space-x-2 text-sm text-[var(--text-primary)]">
             <input
               type="checkbox"
               checked={dryRun}
@@ -111,33 +116,18 @@ export default function DebugPage() {
           <button
             onClick={runBackfill}
             disabled={isProcessing}
-            className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="px-6 py-3 bg-[var(--accent-strong)] text-white font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {isProcessing ? 'Processing…' : 'Run Backfill'}
+            {isProcessing ? 'Processing...' : 'Run Backfill'}
           </button>
 
-          {result && (
-            <div
-              className={`mt-4 p-4 rounded-lg ${
-                result.error
-                  ? 'bg-red-50 border border-red-200'
-                  : 'bg-green-50 border border-green-200'
-              }`}
-            >
-              <pre className="text-sm overflow-auto whitespace-pre-wrap">
-                {JSON.stringify(result, null, 2)}
-              </pre>
+          {result !== null && (
+            <div className="mt-4 p-4 rounded-lg bg-[var(--surface-1)] border border-[var(--border-soft)]">
+              <pre className="text-sm overflow-auto whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
             </div>
           )}
         </div>
-
-        <button
-          onClick={handleSignOut}
-          className="text-sm text-gray-500 hover:text-gray-700 underline"
-        >
-          Sign Out
-        </button>
       </div>
-    </div>
+    </PageLayout>
   );
 }
